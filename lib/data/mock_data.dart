@@ -1,23 +1,52 @@
 import 'models.dart';
 
-const nowLabel = '5:24';
-const nowMin   = 17 * 60 + 24; // 5:24 PM
+// ── Time helpers ───────────────────────────────────────────────
 
-// ── Helpers ──────────────────────────────────────────────────
-
-int _parseMin(String s) {
-  final parts = s.split(':');
-  int h = int.parse(parts[0]);
-  final m = int.parse(parts[1]);
-  if (h < 7) h += 12;
-  return h * 60 + m;
+String _fmt(DateTime dt) {
+  final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final m = dt.minute.toString().padLeft(2, '0');
+  final ampm = dt.hour < 12 ? 'AM' : 'PM';
+  return '$h:$m $ampm';
 }
 
-String _fmtClock(int min) {
+String _fmtMin(int min) {
   int h = (min ~/ 60) % 12;
   if (h == 0) h = 12;
   final m = min % 60;
   return '$h:${m.toString().padLeft(2, '0')}';
+}
+
+String get nowLabel => _fmt(DateTime.now());
+
+int get _nowMin {
+  final n = DateTime.now();
+  return n.hour * 60 + n.minute;
+}
+
+// inMin: bus departs this many minutes from now
+Departure _dep(
+  String id, String line, String headsign, String from, {
+  required int walk,
+  required int inMin,
+  required int ride,
+  required int every,
+  required List<Leg> legs,
+  int transfers = 0,
+}) {
+  final now      = DateTime.now();
+  final departAt = now.add(Duration(minutes: inMin));
+  final departMin = departAt.hour * 60 + departAt.minute;
+  return Departure(
+    id: id, line: line, headsign: headsign, from: from, walk: walk,
+    leaveIn:   inMin - walk,
+    depart:    _fmt(departAt),
+    arrive:    _fmt(departAt.add(Duration(minutes: ride))),
+    duration:  walk + ride + walk,
+    every:     every,
+    legs:      legs,
+    transfers: transfers,
+    departMin: departMin,
+  );
 }
 
 // ── Mock data ─────────────────────────────────────────────────
@@ -29,23 +58,24 @@ const List<Place> kPlaces = [
   Place(id: 'fam',  kind: PlaceKind.star, name: 'Mum & Dad',     address: 'Elm Park',                        stop: 'Elm Park Gate', walk: 6),
 ];
 
-const List<Departure> kHomeDeps = [
-  Departure(id: 'h1', line: '14B', headsign: 'Maple Heights',  from: 'Center Street', walk: 4, leaveIn: 6,  depart: '5:34', arrive: '5:56', duration: 26, every: 10,
+List<Departure> get kHomeDeps => [
+  _dep('h1', '14B', 'Maple Heights',  'Center Street', walk: 4, inMin: 10, ride: 18, every: 10,
     legs: [Leg(TransitMode.walk, 4), Leg(TransitMode.bus,   18, '14B'), Leg(TransitMode.walk, 4)]),
-  Departure(id: 'h2', line: '2',   headsign: 'Riverside Loop', from: 'Center Street', walk: 4, leaveIn: 13, depart: '5:41', arrive: '6:01', duration: 24, every: 12,
+  _dep('h2', '2',   'Riverside Loop', 'Center Street', walk: 4, inMin: 17, ride: 17, every: 12,
     legs: [Leg(TransitMode.walk, 4), Leg(TransitMode.tram,  17, '2'),   Leg(TransitMode.walk, 3)]),
-  Departure(id: 'h3', line: '14B', headsign: 'Maple Heights',  from: 'Center Street', walk: 4, leaveIn: 16, depart: '5:44', arrive: '6:06', duration: 26, every: 10,
+  _dep('h3', '14B', 'Maple Heights',  'Center Street', walk: 4, inMin: 20, ride: 18, every: 10,
     legs: [Leg(TransitMode.walk, 4), Leg(TransitMode.bus,   18, '14B'), Leg(TransitMode.walk, 4)]),
-  Departure(id: 'h4', line: 'RX',  headsign: 'Northern Line',  from: 'Union Station', walk: 9, leaveIn: 19, depart: '5:52', arrive: '6:08', duration: 24, every: 15, transfers: 1,
+  _dep('h4', 'RX',  'Northern Line',  'Union Station', walk: 9, inMin: 28, ride: 11, every: 15,
+    transfers: 1,
     legs: [Leg(TransitMode.walk, 9), Leg(TransitMode.train, 11, 'RX'),  Leg(TransitMode.walk, 4)]),
 ];
 
-const List<Departure> kWorkDeps = [
-  Departure(id: 'w1', line: '14B', headsign: 'Tech Quarter', from: 'Maple Ave',    walk: 4, leaveIn: 3,  depart: '5:31', arrive: '5:57', duration: 26, every: 10,
+List<Departure> get kWorkDeps => [
+  _dep('w1', '14B', 'Tech Quarter', 'Maple Ave',    walk: 4, inMin:  7, ride: 18, every: 10,
     legs: [Leg(TransitMode.walk, 4), Leg(TransitMode.bus,   18, '14B'), Leg(TransitMode.walk, 4)]),
-  Departure(id: 'w2', line: 'M3',  headsign: 'Downtown',     from: 'Maple Square', walk: 6, leaveIn: 9,  depart: '5:39', arrive: '5:58', duration: 19, every: 6,
-    legs: [Leg(TransitMode.walk, 6), Leg(TransitMode.metro, 9,  'M3'), Leg(TransitMode.walk, 4)]),
-  Departure(id: 'w3', line: '14B', headsign: 'Tech Quarter', from: 'Maple Ave',    walk: 4, leaveIn: 13, depart: '5:41', arrive: '6:07', duration: 26, every: 10,
+  _dep('w2', 'M3',  'Downtown',     'Maple Square', walk: 6, inMin: 15, ride:  9, every:  6,
+    legs: [Leg(TransitMode.walk, 6), Leg(TransitMode.metro,  9, 'M3'),  Leg(TransitMode.walk, 4)]),
+  _dep('w3', '14B', 'Tech Quarter', 'Maple Ave',    walk: 4, inMin: 17, ride: 18, every: 10,
     legs: [Leg(TransitMode.walk, 4), Leg(TransitMode.bus,   18, '14B'), Leg(TransitMode.walk, 4)]),
 ];
 
@@ -56,18 +86,17 @@ const List<RouteAlt> kDetailAlts = [
 ];
 
 List<LeaveSeries> buildSeries(Departure d, {int count = 6}) {
-  final baseDepart = _parseMin(d.depart);
-  final rideTail = d.duration - d.walk;
+  final nowMin = _nowMin;
   return List.generate(count, (i) {
-    final depart  = baseDepart + i * d.every;
+    final depart   = d.departMin + i * d.every;
     final leaveMin = depart - d.walk;
     return LeaveSeries(
-      index: i,
-      depart: _fmtClock(depart),
-      arrive: _fmtClock(depart + rideTail),
-      leave:  _fmtClock(leaveMin),
+      index:   i,
+      depart:  _fmtMin(depart),
+      arrive:  _fmtMin(depart + d.duration - d.walk),
+      leave:   _fmtMin(leaveMin),
       leaveIn: leaveMin - nowMin,
-      rec: i == 0,
+      rec:     i == 0,
     );
   });
 }

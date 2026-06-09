@@ -22,6 +22,8 @@ class Departure {
   final List<Leg> legs;
   final int transfers;
 
+  final int departMin; // minutes since midnight, used for live series
+
   const Departure({
     required this.id,
     required this.line,
@@ -35,6 +37,7 @@ class Departure {
     required this.every,
     required this.legs,
     this.transfers = 0,
+    this.departMin = 0,
   });
 }
 

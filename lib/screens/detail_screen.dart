@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/mock_data.dart';
 import '../data/models.dart';
@@ -19,11 +20,19 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> {
   late String _selLine;
   int _openIndex = 0;
+  Timer? _ticker;
 
   @override
   void initState() {
     super.initState();
     _selLine = widget.departure.line;
+    _ticker = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
   }
 
   AppTheme get t => widget.t;

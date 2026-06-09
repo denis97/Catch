@@ -24,22 +24,33 @@ class CatchApp extends StatefulWidget {
 
 class _CatchAppState extends State<CatchApp> {
   late bool _onboarded;
-  final AppTheme _theme = const AppTheme(accent: kDefaultAccent, dark: true);
+  bool _isDark = true;
+
+  AppTheme get _theme => AppTheme(accent: kDefaultAccent, dark: _isDark);
 
   @override
   void initState() {
     super.initState();
     _onboarded = widget.onboarded;
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    _syncStatusBar(_isDark);
+  }
+
+  void _syncStatusBar(bool dark) {
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarBrightness: Brightness.dark,
-      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+      statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
     ));
   }
 
   void _finishOnboarding() {
     widget.prefs.setBool('onboarded', true);
     setState(() => _onboarded = true);
+  }
+
+  void _toggleTheme() {
+    setState(() => _isDark = !_isDark);
+    _syncStatusBar(!_isDark);
   }
 
   @override
@@ -50,14 +61,16 @@ class _CatchAppState extends State<CatchApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.dark(primary: t.accent, surface: t.pageBg),
-        textTheme: GoogleFonts.hankenGroteskTextTheme(ThemeData.dark().textTheme),
+        brightness: t.dark ? Brightness.dark : Brightness.light,
+        colorScheme: (t.dark ? ColorScheme.dark : ColorScheme.light)(primary: t.accent, surface: t.pageBg),
+        textTheme: GoogleFonts.hankenGroteskTextTheme(
+            t.dark ? ThemeData.dark().textTheme : ThemeData.light().textTheme),
         scaffoldBackgroundColor: t.pageBg,
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
       ),
       home: _onboarded
-          ? HomeScreen(t: t)
+          ? HomeScreen(t: t, onToggleTheme: _toggleTheme)
           : OnboardingScreen(t: t, onFinish: _finishOnboarding),
     );
   }

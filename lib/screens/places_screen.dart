@@ -4,9 +4,30 @@ import '../data/models.dart';
 import '../theme/app_theme.dart';
 import 'detail_screen.dart';
 
-class PlacesScreen extends StatelessWidget {
+class PlacesScreen extends StatefulWidget {
   final AppTheme t;
-  const PlacesScreen({super.key, required this.t});
+  final VoidCallback? onToggleTheme;
+  const PlacesScreen({super.key, required this.t, this.onToggleTheme});
+
+  @override
+  State<PlacesScreen> createState() => _PlacesScreenState();
+}
+
+class _PlacesScreenState extends State<PlacesScreen> {
+  late bool _dark;
+
+  @override
+  void initState() {
+    super.initState();
+    _dark = widget.t.dark;
+  }
+
+  AppTheme get t => AppTheme(accent: widget.t.accent, dark: _dark);
+
+  void _toggleTheme() {
+    setState(() => _dark = !_dark);
+    widget.onToggleTheme?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +50,7 @@ class PlacesScreen extends StatelessWidget {
                   child: Icon(Icons.add, size: 20, color: t.accent),
                 )),
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -40,12 +61,12 @@ class PlacesScreen extends StatelessWidget {
                   _PlaceCard(t: t, places: favs, onTap: (p) => _open(context, p)),
                   const SizedBox(height: 18),
                   GestureDetector(
-                    onTap: () => Navigator.pop(context),
+                    onTap: () {},
                     child: Container(
                       height: 50,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: t.border, width: 1.5, style: BorderStyle.solid),
+                        border: Border.all(color: t.border, width: 1.5),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -53,6 +74,39 @@ class PlacesScreen extends StatelessWidget {
                           Icon(Icons.add, size: 18, color: t.textSec),
                           const SizedBox(width: 8),
                           Text('Add a place', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: t.textSec)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  _SectionLabel(t: t, label: 'Appearance'),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: t.card,
+                      borderRadius: BorderRadius.circular(AppTheme.radius),
+                      border: Border.all(color: t.border),
+                      boxShadow: t.shadow,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 42, height: 42,
+                            decoration: BoxDecoration(color: t.chipBg, borderRadius: BorderRadius.circular(13)),
+                            child: Icon(_dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined, size: 21, color: t.textSec),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(_dark ? 'Dark mode' : 'Light mode',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: t.text)),
+                          ),
+                          Switch(
+                            value: _dark,
+                            onChanged: (_) => _toggleTheme(),
+                            activeColor: t.accent,
+                            activeTrackColor: t.accentSoft,
+                          ),
                         ],
                       ),
                     ),

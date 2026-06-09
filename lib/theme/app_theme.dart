@@ -47,6 +47,9 @@ class AppTheme {
       : [const BoxShadow(color: Color(0x0D101418), blurRadius: 2, offset: Offset(0, 1)),
          const BoxShadow(color: Color(0x0D101418), blurRadius: 24, offset: Offset(0, 8))];
 
+  // ── Tab ──
+  Color get tabActiveBg => dark ? Colors.white.withValues(alpha: 0.12) : Colors.white;
+
   // ── Radii ──
   static const double radius   = 22;
   static const double radiusSm = 14;

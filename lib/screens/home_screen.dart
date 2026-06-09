@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/mock_data.dart';
 import '../data/models.dart';
@@ -10,7 +11,8 @@ import 'places_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AppTheme t;
-  const HomeScreen({super.key, required this.t});
+  final VoidCallback? onToggleTheme;
+  const HomeScreen({super.key, required this.t, this.onToggleTheme});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -18,6 +20,20 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _goingHome = true;
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresh every minute so countdowns stay live
+    _ticker = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   AppTheme get t => widget.t;
   List<Departure> get deps => _goingHome ? kHomeDeps : kWorkDeps;
@@ -33,7 +49,8 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _ContextHeader(t: t, goingHome: _goingHome, onPlaces: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => PlacesScreen(t: t)));
+              Navigator.push(context, MaterialPageRoute(
+              builder: (_) => PlacesScreen(t: t, onToggleTheme: widget.onToggleTheme)));
             }),
             const SizedBox(height: 14),
             _DestSwitch(t: t, goingHome: _goingHome, onToggle: (v) => setState(() => _goingHome = v)),
@@ -100,7 +117,7 @@ class _ContextHeader extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    "You're at ${goingHome ? 'Work' : 'Home'} · $nowLabel PM",
+                    "You're at ${goingHome ? 'Work' : 'Home'} · $nowLabel",
                     style: TextStyle(fontSize: 13.5, color: t.textSec, fontFeatures: const [FontFeature.tabularFigures()]),
                   ),
                 ],
@@ -152,7 +169,7 @@ class _DestSwitch extends StatelessWidget {
           duration: const Duration(milliseconds: 150),
           height: 38,
           decoration: BoxDecoration(
-            color: on ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
+            color: on ? t.tabActiveBg : Colors.transparent,
             borderRadius: BorderRadius.circular(11),
             boxShadow: on ? [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 3, offset: const Offset(0, 1))] : null,
           ),
