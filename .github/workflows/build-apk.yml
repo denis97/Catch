@@ -26,6 +26,11 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Inject API key
+        if: ${{ secrets.GOOGLE_MAPS_API_KEY != '' }}
+        run: |
+          echo "const String kGoogleMapsApiKey = '${{ secrets.GOOGLE_MAPS_API_KEY }}';" > lib/config.dart
+
       - name: Build debug APK
         run: flutter build apk --debug
 
