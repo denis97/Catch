@@ -41,6 +41,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Catch uses your location to find nearby stops and show departure times.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Catch uses your location to find nearby stops and show departure times.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

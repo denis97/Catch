@@ -6,6 +6,8 @@ import '../theme/app_theme.dart';
 import '../widgets/line_badge.dart';
 import '../widgets/legs_row.dart';
 import '../widgets/pulse_dot.dart';
+import '../services/transit_service.dart';
+import '../services/location_service.dart';
 import 'detail_screen.dart';
 import 'places_screen.dart';
 
@@ -21,12 +23,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _goingHome = true;
   Timer? _ticker;
+  List<Departure> _deps = [];
+  bool _loading = true;
+  bool _usingLive = false;
+
+  final _transit  = TransitService();
+  final _location = LocationService();
 
   @override
   void initState() {
     super.initState();
-    // Refresh every minute so countdowns stay live
-    _ticker = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
+    _fetch();
+    _ticker = Timer.periodic(const Duration(minutes: 1), (_) => _fetch());
   }
 
   @override
@@ -36,41 +44,79 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   AppTheme get t => widget.t;
-  List<Departure> get deps => _goingHome ? kHomeDeps : kWorkDeps;
+
+  Future<void> _fetch() async {
+    try {
+      final pos = await _location.getPosition();
+      if (pos == null) throw Exception('no location');
+
+      final dest = _goingHome
+          ? kPlaces.firstWhere((p) => p.kind == PlaceKind.home).address
+          : kPlaces.firstWhere((p) => p.kind == PlaceKind.work).address;
+
+      final live = await _transit.getDepartures(
+        originLat:   pos.latitude,
+        originLng:   pos.longitude,
+        destination: dest,
+      );
+
+      if (!mounted) return;
+      setState(() { _deps = live; _loading = false; _usingLive = true; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _deps     = _goingHome ? kHomeDeps : kWorkDeps;
+        _loading  = false;
+        _usingLive = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
     return Scaffold(
       backgroundColor: t.pageBg,
-      body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(18, top + 18, 18, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _ContextHeader(t: t, goingHome: _goingHome, onPlaces: () {
-              Navigator.push(context, MaterialPageRoute(
-              builder: (_) => PlacesScreen(t: t, onToggleTheme: widget.onToggleTheme)));
-            }),
-            const SizedBox(height: 14),
-            _DestSwitch(t: t, goingHome: _goingHome, onToggle: (v) => setState(() => _goingHome = v)),
-            const SizedBox(height: 20),
-            _DepartureHero(t: t, d: deps.first, onTap: () => _openDetail(deps.first)),
-            const SizedBox(height: 22),
-            _SectionLabel(t: t, label: 'If you miss it'),
-            _FallbackCard(t: t, deps: deps.skip(1).toList(), onTap: _openDetail),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.refresh, size: 13, color: t.textTer),
-                const SizedBox(width: 5),
-                Text('Live · updated just now', style: TextStyle(fontSize: 12.5, color: t.textTer)),
-              ],
+      body: _loading
+          ? Center(child: CircularProgressIndicator(color: t.accent))
+          : SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(18, top + 18, 18, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ContextHeader(t: t, goingHome: _goingHome, onPlaces: () {
+                    Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => PlacesScreen(t: t, onToggleTheme: widget.onToggleTheme)));
+                  }),
+                  const SizedBox(height: 14),
+                  _DestSwitch(t: t, goingHome: _goingHome, onToggle: (v) {
+                    setState(() { _goingHome = v; _loading = true; });
+                    _fetch();
+                  }),
+                  const SizedBox(height: 20),
+                  if (_deps.isNotEmpty) ...[
+                    _DepartureHero(t: t, d: _deps.first, onTap: () => _openDetail(_deps.first)),
+                    const SizedBox(height: 22),
+                    _SectionLabel(t: t, label: 'If you miss it'),
+                    _FallbackCard(t: t, deps: _deps.skip(1).toList(), onTap: _openDetail),
+                  ] else
+                    Center(child: Padding(
+                      padding: const EdgeInsets.only(top: 60),
+                      child: Text('No departures found', style: TextStyle(color: t.textSec)),
+                    )),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(_usingLive ? Icons.wifi : Icons.wifi_off, size: 13, color: t.textTer),
+                      const SizedBox(width: 5),
+                      Text(_usingLive ? 'Live · updated just now' : 'Preview data',
+                          style: TextStyle(fontSize: 12.5, color: t.textTer)),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
     );
   }
 

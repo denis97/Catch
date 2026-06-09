@@ -1,3 +1,6 @@
+# API keys — never commit
+lib/config.dart
+
 # Miscellaneous
 *.class
 *.log
