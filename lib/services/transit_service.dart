@@ -140,9 +140,6 @@ class TransitService {
     final walkBefore = (walkBeforeSec / 60).round().clamp(1, 60);
     final walkAfter  = (walkAfterSec  / 60).round().clamp(1, 60);
 
-    final leaveAt = departAt.subtract(Duration(minutes: walkBefore));
-    final leaveIn = leaveAt.difference(now).inMinutes;
-
     final totalSec   = legDuration['value']                               as int? ?? 0;
     final transitDurMap = transitStep['duration'] as Map<String, dynamic>? ?? {};
     final transitSec = transitDurMap['value']                             as int? ?? 0;
@@ -158,7 +155,6 @@ class TransitService {
       headsign: headsign,
       from:     (depStop['name'] as String?) ?? '',
       walk:     walkBefore,
-      leaveIn:  leaveIn,
       depart:   _fmt(departAt),
       arrive:   _fmt(arriveAt),
       duration: (totalSec / 60).round(),
