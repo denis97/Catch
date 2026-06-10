@@ -28,7 +28,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool _goingHome = true;
+  int _selectedIndex = 0; // 0=home, 1=work, 2+=favorites
   bool _auto = true;
   Timer? _ticker;
   List<Departure> _deps = [];
@@ -56,9 +56,29 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _onPlacesChanged() => _fetch();
+  void _onPlacesChanged() {
+    if (_selectedIndex >= 2 && _selectedIndex - 2 >= widget.places.favorites.length) {
+      _selectedIndex = 0;
+      _auto = true;
+    }
+    _fetch();
+  }
 
   AppTheme get t => widget.t;
+
+  Place? get _selectedPlace {
+    if (_selectedIndex == 0) return widget.places.home;
+    if (_selectedIndex == 1) return widget.places.work;
+    final favIdx = _selectedIndex - 2;
+    final favs = widget.places.favorites;
+    return favIdx < favs.length ? favs[favIdx] : null;
+  }
+
+  String get _headingLabel {
+    if (_selectedIndex == 0) return 'Heading home';
+    if (_selectedIndex == 1) return 'Heading to work';
+    return 'Heading to ${_selectedPlace?.name ?? '...'}';
+  }
 
   Future<void> _fetch({bool showSpinner = false}) async {
     if (showSpinner && mounted) setState(() => _loading = true);
@@ -71,11 +91,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _pos = pos;
 
-    final home = widget.places.home;
-    final work = widget.places.work;
-
-    // Auto-switch destination based on which anchor the user is near.
-    if (_auto && pos != null) {
+    // Auto-switch between home/work based on proximity.
+    if (_auto && pos != null && _selectedIndex < 2) {
+      final home = widget.places.home;
+      final work = widget.places.work;
       final distHome = home?.hasCoords == true
           ? Geolocator.distanceBetween(pos.latitude, pos.longitude, home!.lat!, home.lng!)
           : null;
@@ -83,13 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ? Geolocator.distanceBetween(pos.latitude, pos.longitude, work!.lat!, work.lng!)
           : null;
       if (distHome != null && distHome < _kNearbyMeters) {
-        _goingHome = false; // at home → heading to work
+        _selectedIndex = 1; // at home → heading to work
       } else if (distWork != null && distWork < _kNearbyMeters) {
-        _goingHome = true; // at work → heading home
+        _selectedIndex = 0; // at work → heading home
       }
     }
 
-    final dest = _goingHome ? home : work;
+    final dest = _selectedPlace;
 
     String? reason;
     List<Departure>? live;
@@ -101,9 +120,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (pos == null) {
       reason = 'Location unavailable';
     } else if (dest == null) {
-      reason = 'Set your ${_goingHome ? 'Home' : 'Work'} address in Places';
+      reason = _selectedIndex == 0 ? 'Set your Home address in Places'
+          : _selectedIndex == 1 ? 'Set your Work address in Places'
+          : 'This place has no address set';
     } else if (distToDest != null && distToDest < 200) {
-      reason = "You're already ${_goingHome ? 'home' : 'at work'}";
+      reason = _selectedIndex == 0 ? "You're already home"
+          : _selectedIndex == 1 ? "You're already at work"
+          : "You're already there";
     } else {
       try {
         live = await _transit.getDepartures(
@@ -123,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() {
       _destination   = dest?.destinationParam;
-      _deps          = live ?? (_goingHome ? kHomeDeps : kWorkDeps);
+      _deps          = live ?? (_selectedIndex == 1 ? kWorkDeps : kHomeDeps);
       _usingLive     = live != null;
       _previewReason = reason;
       _loading       = false;
@@ -157,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _ContextHeader(
                       t: t,
-                      goingHome: _goingHome,
+                      heading: _headingLabel,
                       auto: _auto,
                       onAutoTap: () {
                         setState(() => _auto = true);
@@ -171,10 +194,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                     ),
                     const SizedBox(height: 14),
-                    _DestSwitch(t: t, goingHome: _goingHome, onToggle: (v) {
-                      setState(() { _goingHome = v; _auto = false; });
-                      _fetch(showSpinner: true);
-                    }),
+                    _DestSwitch(
+                      t: t,
+                      selectedIndex: _selectedIndex,
+                      favorites: widget.places.favorites,
+                      onSelect: (i) {
+                        setState(() { _selectedIndex = i; _auto = false; });
+                        _fetch(showSpinner: true);
+                      },
+                    ),
                     const SizedBox(height: 20),
                     if (_previewReason != null) ...[
                       _PreviewBanner(t: t, reason: _previewReason!, onRetry: () => _fetch(showSpinner: true)),
@@ -268,12 +296,12 @@ class _PreviewBanner extends StatelessWidget {
 
 class _ContextHeader extends StatelessWidget {
   final AppTheme t;
-  final bool goingHome;
+  final String heading;
   final bool auto;
   final VoidCallback onAutoTap;
   final VoidCallback onPlaces;
   const _ContextHeader({
-    required this.t, required this.goingHome,
+    required this.t, required this.heading,
     required this.auto, required this.onAutoTap, required this.onPlaces,
   });
 
@@ -287,7 +315,7 @@ class _ContextHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                goingHome ? 'Heading home' : 'Heading to work',
+                heading,
                 style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: t.text, letterSpacing: -0.6, height: 1.05),
               ),
               const SizedBox(height: 7),
@@ -341,29 +369,47 @@ class _ContextHeader extends StatelessWidget {
 
 class _DestSwitch extends StatelessWidget {
   final AppTheme t;
-  final bool goingHome;
-  final ValueChanged<bool> onToggle;
-  const _DestSwitch({required this.t, required this.goingHome, required this.onToggle});
+  final int selectedIndex;
+  final List<Place> favorites;
+  final ValueChanged<int> onSelect;
+  const _DestSwitch({required this.t, required this.selectedIndex, required this.favorites, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: t.chipBg, borderRadius: BorderRadius.circular(14)),
+    if (favorites.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: t.chipBg, borderRadius: BorderRadius.circular(14)),
+        child: Row(
+          children: [
+            _tab('Home', Icons.home_outlined, 0),
+            _tab('Work', Icons.work_outline, 1),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _tab('Home', Icons.home_outlined, true),
-          _tab('Work', Icons.work_outline, false),
+          _pill('Home', Icons.home_outlined, 0),
+          const SizedBox(width: 8),
+          _pill('Work', Icons.work_outline, 1),
+          for (int i = 0; i < favorites.length; i++) ...[
+            const SizedBox(width: 8),
+            _pill(favorites[i].name, Icons.star_outline, i + 2),
+          ],
         ],
       ),
     );
   }
 
-  Widget _tab(String label, IconData icon, bool isHome) {
-    final on = goingHome == isHome;
+  Widget _tab(String label, IconData icon, int index) {
+    final on = selectedIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => onToggle(isHome),
+        onTap: () => onSelect(index),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           height: 38,
@@ -380,6 +426,32 @@ class _DestSwitch extends StatelessWidget {
               Text(label, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: on ? t.text : t.textSec)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pill(String label, IconData icon, int index) {
+    final on = selectedIndex == index;
+    return GestureDetector(
+      onTap: () => onSelect(index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: on ? t.tabActiveBg : t.chipBg,
+          borderRadius: BorderRadius.circular(11),
+          border: on ? null : Border.all(color: t.border),
+          boxShadow: on ? [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 3, offset: const Offset(0, 1))] : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 17, color: on ? t.accent : t.textTer),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: on ? t.text : t.textSec)),
+          ],
         ),
       ),
     );
