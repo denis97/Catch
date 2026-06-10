@@ -45,12 +45,32 @@ jobs:
             echo "const String kGoogleMapsApiKey = '$GOOGLE_MAPS_API_KEY';" > lib/config.dart
           fi
 
-      - name: Build debug APK
-        run: flutter build apk --debug
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/catch-release.jks"
+            {
+              echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+              echo "keyPassword=$ANDROID_KEY_PASSWORD"
+              echo "keyAlias=$ANDROID_KEY_ALIAS"
+              echo "storeFile=$RUNNER_TEMP/catch-release.jks"
+            } > android/key.properties
+            echo "Release signing configured from secrets."
+          else
+            echo "No ANDROID_KEYSTORE_BASE64 secret — release build will fall back to debug signing."
+          fi
+
+      - name: Build release APK
+        run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: catch-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: catch-release
+          path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
