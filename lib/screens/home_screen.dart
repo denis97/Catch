@@ -32,11 +32,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _auto = true;
   Timer? _ticker;
   List<Departure> _deps = [];
-  bool _loading = true;
+  bool _loading = true; // first-load only: full-screen spinner
+  bool _busy = false;   // inline refresh: keep feed visible, dim it
   bool _usingLive = false;
   String? _previewReason;
   Position? _pos;
+  DateTime? _posAt;     // when _pos was last acquired
   String? _destination; // destination param used for the current feed
+
+  /// How long a GPS fix stays fresh enough to reuse for a destination switch.
+  static const _posMaxAge = Duration(seconds: 60);
 
   final _transit  = TransitService();
   final _location = LocationService();
@@ -80,16 +85,23 @@ class _HomeScreenState extends State<HomeScreen> {
     return 'Heading to ${_selectedPlace?.name ?? '...'}';
   }
 
-  Future<void> _fetch({bool showSpinner = false}) async {
-    if (showSpinner && mounted) setState(() => _loading = true);
+  Future<void> _fetch({bool inline = false, bool forceLocation = false}) async {
+    if (inline && mounted) setState(() => _busy = true);
 
-    Position? pos;
-    try {
-      pos = await _location.getPosition();
-    } catch (_) {
-      pos = null;
+    // Reuse the last fix for plain destination switches — your location
+    // hasn't changed, so re-acquiring GPS just adds latency. Only re-fix when
+    // forced (pull-to-refresh, auto re-eval), missing, or stale.
+    Position? pos = _pos;
+    final stale = _posAt == null || DateTime.now().difference(_posAt!) > _posMaxAge;
+    if (pos == null || forceLocation || stale) {
+      try {
+        pos = await _location.getPosition();
+      } catch (_) {
+        pos = null;
+      }
+      _pos = pos;
+      if (pos != null) _posAt = DateTime.now();
     }
-    _pos = pos;
 
     // Auto-switch between home/work based on proximity.
     if (_auto && pos != null && _selectedIndex < 2) {
@@ -150,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _usingLive     = live != null;
       _previewReason = reason;
       _loading       = false;
+      _busy          = false;
     });
   }
 
@@ -171,7 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? Center(child: CircularProgressIndicator(color: t.accent))
           : RefreshIndicator(
               color: t.accent,
-              onRefresh: () => _fetch(),
+              onRefresh: () => _fetch(forceLocation: true),
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(18, top + 18, 18, 32),
@@ -184,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       auto: _auto,
                       onAutoTap: () {
                         setState(() => _auto = true);
-                        _fetch(showSpinner: true);
+                        _fetch(inline: true, forceLocation: true);
                       },
                       onPlaces: () {
                         Navigator.push(context, MaterialPageRoute(
@@ -200,38 +213,58 @@ class _HomeScreenState extends State<HomeScreen> {
                       favorites: widget.places.favorites,
                       onSelect: (i) {
                         setState(() { _selectedIndex = i; _auto = false; });
-                        _fetch(showSpinner: true);
+                        _fetch(inline: true);
                       },
                     ),
                     const SizedBox(height: 20),
                     if (_previewReason != null) ...[
-                      _PreviewBanner(t: t, reason: _previewReason!, onRetry: () => _fetch(showSpinner: true)),
+                      _PreviewBanner(t: t, reason: _previewReason!, onRetry: () => _fetch(inline: true, forceLocation: true)),
                       const SizedBox(height: 14),
                     ],
-                    if (_deps.isNotEmpty) ...[
-                      _DepartureHero(
-                        t: t, d: _deps.first,
-                        onTap: () => _openDetail(_deps.first),
-                        onRemind: () => _remind(_deps.first),
+                    // Keep the feed on screen while refreshing — dim it
+                    // instead of tearing it down to a blank spinner.
+                    AnimatedOpacity(
+                      duration: const Duration(milliseconds: 150),
+                      opacity: _busy ? 0.45 : 1.0,
+                      child: IgnorePointer(
+                        ignoring: _busy,
+                        child: _deps.isNotEmpty
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _DepartureHero(
+                                    t: t, d: _deps.first,
+                                    onTap: () => _openDetail(_deps.first),
+                                    onRemind: () => _remind(_deps.first),
+                                  ),
+                                  if (_deps.length > 1) ...[
+                                    const SizedBox(height: 22),
+                                    _SectionLabel(t: t, label: 'If you miss it'),
+                                    _FallbackCard(t: t, deps: _deps.skip(1).toList(), onTap: _openDetail),
+                                  ],
+                                ],
+                              )
+                            : Center(child: Padding(
+                                padding: const EdgeInsets.only(top: 60),
+                                child: Text('No departures found', style: TextStyle(color: t.textSec)),
+                              )),
                       ),
-                      if (_deps.length > 1) ...[
-                        const SizedBox(height: 22),
-                        _SectionLabel(t: t, label: 'If you miss it'),
-                        _FallbackCard(t: t, deps: _deps.skip(1).toList(), onTap: _openDetail),
-                      ],
-                    ] else
-                      Center(child: Padding(
-                        padding: const EdgeInsets.only(top: 60),
-                        child: Text('No departures found', style: TextStyle(color: t.textSec)),
-                      )),
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(_usingLive ? Icons.wifi : Icons.wifi_off, size: 13, color: t.textTer),
-                        const SizedBox(width: 5),
-                        Text(_usingLive ? 'Live · updated just now' : 'Preview data',
-                            style: TextStyle(fontSize: 12.5, color: t.textTer)),
+                        if (_busy) ...[
+                          SizedBox(width: 13, height: 13,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: t.textTer)),
+                          const SizedBox(width: 6),
+                          Text('Updating…', style: TextStyle(fontSize: 12.5, color: t.textTer)),
+                        ] else ...[
+                          Icon(_usingLive ? Icons.wifi : Icons.wifi_off, size: 13, color: t.textTer),
+                          const SizedBox(width: 5),
+                          Text(_usingLive ? 'Live · updated just now' : 'Preview data',
+                              style: TextStyle(fontSize: 12.5, color: t.textTer)),
+                        ],
                       ],
                     ),
                   ],
