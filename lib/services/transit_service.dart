@@ -103,7 +103,6 @@ class TransitService {
 
     Map<String, dynamic>? transitStep;
     int walkBeforeSec = 0;
-    int walkAfterSec  = 0;
     int transitCount  = 0;
 
     for (final s in stepsList) {
@@ -115,9 +114,8 @@ class TransitService {
       if (mode == 'TRANSIT') {
         transitStep ??= step;
         transitCount++;
-      } else if (mode == 'WALKING') {
-        if (transitStep == null) { walkBeforeSec += dur; }
-        else { walkAfterSec += dur; }
+      } else if (mode == 'WALKING' && transitStep == null) {
+        walkBeforeSec += dur;
       }
     }
 
@@ -138,16 +136,32 @@ class TransitService {
     final arriveAt = DateTime.fromMillisecondsSinceEpoch(arrivalUnix * 1000);
 
     final walkBefore = (walkBeforeSec / 60).round().clamp(1, 60);
-    final walkAfter  = (walkAfterSec  / 60).round().clamp(1, 60);
 
-    final totalSec   = legDuration['value']                               as int? ?? 0;
-    final transitDurMap = transitStep['duration'] as Map<String, dynamic>? ?? {};
-    final transitSec = transitDurMap['value']                             as int? ?? 0;
+    final totalSec    = legDuration['value'] as int? ?? 0;
 
     final lineName    = (lineMap['short_name'] as String?) ?? (lineMap['name'] as String?) ?? '?';
     final headsign    = (td['headsign']        as String?) ?? lineName;
     final vehicleType = (vehicle['type']       as String?) ?? 'BUS';
-    final mode        = _vehicleMode(vehicleType);
+
+    // Build legs from every step so multi-transfer routes are fully represented.
+    final legs = <Leg>[];
+    for (final s in stepsList) {
+      final step    = s as Map<String, dynamic>;
+      final sMode   = step['travel_mode'] as String;
+      final sDurMap = step['duration']    as Map<String, dynamic>?;
+      final sDurMin = ((sDurMap?['value'] as int? ?? 0) / 60).round().clamp(1, 120);
+
+      if (sMode == 'WALKING') {
+        legs.add(Leg(TransitMode.walk, sDurMin));
+      } else if (sMode == 'TRANSIT') {
+        final std      = step['transit_details'] as Map<String, dynamic>? ?? {};
+        final sLine    = std['line']    as Map<String, dynamic>? ?? {};
+        final sVehicle = sLine['vehicle'] as Map<String, dynamic>? ?? {};
+        final sType    = (sVehicle['type'] as String?) ?? 'BUS';
+        final sName    = (sLine['short_name'] as String?) ?? (sLine['name'] as String?) ?? '?';
+        legs.add(Leg(_vehicleMode(sType), sDurMin, sName));
+      }
+    }
 
     return Departure(
       id:       '$lineName-$departureUnix',
@@ -159,11 +173,7 @@ class TransitService {
       arrive:   _fmt(arriveAt),
       duration: (totalSec / 60).round(),
       every:    _guessFrequency(vehicleType),
-      legs: [
-        Leg(TransitMode.walk, walkBefore),
-        Leg(mode, (transitSec / 60).round(), lineName),
-        Leg(TransitMode.walk, walkAfter),
-      ],
+      legs:     legs,
       transfers: transitCount - 1,
       departMin: departAt.hour * 60 + departAt.minute,
     );
