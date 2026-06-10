@@ -35,6 +35,7 @@ class TransitService {
       'mode': 'transit',
       'departure_time': departureTimeSec.toString(),
       'alternatives': 'true',
+      'transit_routing_preference': 'less_walking',
       'key': kGoogleMapsApiKey,
     });
 
