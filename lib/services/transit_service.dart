@@ -27,6 +27,7 @@ class TransitService {
 
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
     final status = body['status'] as String;
+    if (status == 'ZERO_RESULTS' || status == 'NOT_FOUND') return [];
     if (status != 'OK') throw Exception('Directions API: $status');
 
     final routes = body['routes'] as List<dynamic>;

@@ -94,10 +94,16 @@ class _HomeScreenState extends State<HomeScreen> {
     String? reason;
     List<Departure>? live;
 
+    final distToDest = (pos != null && dest?.hasCoords == true)
+        ? Geolocator.distanceBetween(pos.latitude, pos.longitude, dest!.lat!, dest.lng!)
+        : null;
+
     if (pos == null) {
       reason = 'Location unavailable';
     } else if (dest == null) {
       reason = 'Set your ${_goingHome ? 'Home' : 'Work'} address in Places';
+    } else if (distToDest != null && distToDest < 200) {
+      reason = "You're already ${_goingHome ? 'home' : 'at work'}";
     } else {
       try {
         live = await _transit.getDepartures(
@@ -125,12 +131,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _remind(Departure d) async {
-    final ok = await ReminderService.instance.scheduleLeaveReminder(d);
+    final result = await ReminderService.instance.scheduleLeaveReminder(d);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok
-          ? "Reminder set — we'll ping you 2 min before it's time to leave"
-          : 'Too late to remind — time to go!'),
+      content: Text(reminderMessage(result)),
       behavior: SnackBarBehavior.floating,
     ));
   }
@@ -445,7 +449,10 @@ class _DepartureHero extends StatelessWidget {
                     children: [
                       LineBadge(line: d.line, t: t, size: 30, mode: d.mode),
                       const SizedBox(width: 10),
-                      Text(d.headsign, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: t.text, letterSpacing: -0.2)),
+                      Expanded(
+                        child: Text(d.headsign, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: t.text, letterSpacing: -0.2)),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 7),
@@ -588,7 +595,7 @@ class _DepartureRow extends StatelessWidget {
                         LineBadge(line: d.line, t: t, size: 24, mode: d.mode),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(d.headsign,
+                          child: Text(d.headsign, maxLines: 1, overflow: TextOverflow.ellipsis,
                               style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: t.text)),
                         ),
                         Text('arr ${d.arrive}',

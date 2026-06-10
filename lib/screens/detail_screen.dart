@@ -107,12 +107,10 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   Future<void> _remind(Departure dep) async {
-    final ok = await ReminderService.instance.scheduleLeaveReminder(dep);
+    final result = await ReminderService.instance.scheduleLeaveReminder(dep);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok
-          ? "Reminder set — we'll ping you 2 min before it's time to leave"
-          : 'Too late to remind — time to go!'),
+      content: Text(reminderMessage(result)),
       behavior: SnackBarBehavior.floating,
     ));
   }
@@ -175,9 +173,11 @@ class _DetailScreenState extends State<DetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_base.headsign, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.3, color: t.text, height: 1.1)),
+                Text(_base.headsign, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.3, color: t.text, height: 1.1)),
                 const SizedBox(height: 2),
                 Text('$count ways to leave · from ${_base.from}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12.5, color: t.textSec)),
               ],
             ),
@@ -430,12 +430,16 @@ class _LeaveTimeCard extends StatelessWidget {
                           color: steps[i].line == null ? t.textTer : legColor,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          steps[i].label,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: steps[i].line == null ? FontWeight.w500 : FontWeight.w700,
-                            color: steps[i].line == null ? t.textSec : t.text,
+                        Expanded(
+                          child: Text(
+                            steps[i].label,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: steps[i].line == null ? FontWeight.w500 : FontWeight.w700,
+                              color: steps[i].line == null ? t.textSec : t.text,
+                            ),
                           ),
                         ),
                       ],
