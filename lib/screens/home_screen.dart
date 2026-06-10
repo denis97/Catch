@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Position? _pos;
   DateTime? _posAt;     // when _pos was last acquired
   String? _destination; // destination param used for the current feed
+  final Map<String, List<Departure>> _depsCache = {}; // keyed by destinationParam
 
   /// How long a GPS fix stays fresh enough to reuse for a destination switch.
   static const _posMaxAge = Duration(seconds: 60);
@@ -50,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     widget.places.addListener(_onPlacesChanged);
-    _fetch();
+    _fetch().then((_) => _prefetchOthers());
     _ticker = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
   }
 
@@ -66,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedIndex = 0;
       _auto = true;
     }
-    _fetch();
+    _fetch().then((_) => _prefetchOthers());
   }
 
   AppTheme get t => widget.t;
@@ -83,6 +84,22 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_selectedIndex == 0) return 'Heading home';
     if (_selectedIndex == 1) return 'Heading to work';
     return 'Heading to ${_selectedPlace?.name ?? '...'}';
+  }
+
+  List<Place> get _otherPlaces {
+    final sel = _selectedPlace;
+    return [
+      if (widget.places.home != null) widget.places.home!,
+      if (widget.places.work != null) widget.places.work!,
+      ...widget.places.favorites,
+    ].where((p) => p.id != sel?.id).toList();
+  }
+
+  int _placeIndex(Place place) {
+    if (place.kind == PlaceKind.home) return 0;
+    if (place.kind == PlaceKind.work) return 1;
+    final favIdx = widget.places.favorites.indexWhere((f) => f.id == place.id);
+    return favIdx >= 0 ? 2 + favIdx : 0;
   }
 
   Future<void> _fetch({bool inline = false, bool forceLocation = false}) async {
@@ -156,14 +173,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (!mounted) return;
+    final destParam = dest?.destinationParam;
+    final freshDeps = live ?? (_selectedIndex == 1 ? kWorkDeps : kHomeDeps);
     setState(() {
-      _destination   = dest?.destinationParam;
-      _deps          = live ?? (_selectedIndex == 1 ? kWorkDeps : kHomeDeps);
+      _destination   = destParam;
+      _deps          = freshDeps;
+      if (destParam != null) _depsCache[destParam] = freshDeps;
       _usingLive     = live != null;
       _previewReason = reason;
       _loading       = false;
       _busy          = false;
     });
+  }
+
+  Future<void> _prefetchOthers() async {
+    final pos = _pos;
+    if (pos == null) return;
+    for (final place in _otherPlaces) {
+      if (!mounted) return;
+      if (_depsCache.containsKey(place.destinationParam)) continue;
+      try {
+        final deps = await _transit.getDepartures(
+          originLat: pos.latitude,
+          originLng: pos.longitude,
+          destination: place.destinationParam,
+        );
+        if (mounted && deps.isNotEmpty) {
+          setState(() => _depsCache[place.destinationParam] = deps);
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> _remind(Departure d) async {
@@ -206,23 +245,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onToggleTheme: widget.onToggleTheme)));
                       },
                     ),
-                    const SizedBox(height: 14),
-                    _DestSwitch(
-                      t: t,
-                      selectedIndex: _selectedIndex,
-                      favorites: widget.places.favorites,
-                      onSelect: (i) {
-                        setState(() { _selectedIndex = i; _auto = false; });
-                        _fetch(inline: true);
-                      },
-                    ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
                     if (_previewReason != null) ...[
                       _PreviewBanner(t: t, reason: _previewReason!, onRetry: () => _fetch(inline: true, forceLocation: true)),
                       const SizedBox(height: 14),
                     ],
-                    // Keep the feed on screen while refreshing — dim it
-                    // instead of tearing it down to a blank spinner.
                     AnimatedOpacity(
                       duration: const Duration(milliseconds: 150),
                       opacity: _busy ? 0.45 : 1.0,
@@ -237,6 +264,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                     onTap: () => _openDetail(_deps.first),
                                     onRemind: () => _remind(_deps.first),
                                   ),
+                                  if (_otherPlaces.isNotEmpty) ...[
+                                    const SizedBox(height: 22),
+                                    _SectionLabel(t: t, label: 'Other destinations'),
+                                    _buildDestGrid(),
+                                  ],
                                   if (_deps.length > 1) ...[
                                     const SizedBox(height: 22),
                                     _SectionLabel(t: t, label: 'If you miss it'),
@@ -272,6 +304,42 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
     );
+  }
+
+  Widget _buildDestGrid() {
+    final places = _otherPlaces;
+    final rows = <Widget>[];
+    for (int i = 0; i < places.length; i += 2) {
+      if (rows.isNotEmpty) rows.add(const SizedBox(height: 12));
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _DestinationGridCard(
+            t: t,
+            place: places[i],
+            deps: _depsCache[places[i].destinationParam],
+            onTap: () {
+              setState(() { _selectedIndex = _placeIndex(places[i]); _auto = false; });
+              _fetch(inline: true);
+            },
+          )),
+          const SizedBox(width: 12),
+          if (i + 1 < places.length)
+            Expanded(child: _DestinationGridCard(
+              t: t,
+              place: places[i + 1],
+              deps: _depsCache[places[i + 1].destinationParam],
+              onTap: () {
+                setState(() { _selectedIndex = _placeIndex(places[i + 1]); _auto = false; });
+                _fetch(inline: true);
+              },
+            ))
+          else
+            const Expanded(child: SizedBox()),
+        ],
+      ));
+    }
+    return Column(children: rows);
   }
 
   void _openDetail(Departure d) {
@@ -398,92 +466,69 @@ class _ContextHeader extends StatelessWidget {
   }
 }
 
-// ─── Destination toggle ────────────────────────────────────────
+// ─── Destination grid card ─────────────────────────────────────
 
-class _DestSwitch extends StatelessWidget {
+class _DestinationGridCard extends StatelessWidget {
   final AppTheme t;
-  final int selectedIndex;
-  final List<Place> favorites;
-  final ValueChanged<int> onSelect;
-  const _DestSwitch({required this.t, required this.selectedIndex, required this.favorites, required this.onSelect});
+  final Place place;
+  final List<Departure>? deps;
+  final VoidCallback onTap;
+  const _DestinationGridCard({required this.t, required this.place, required this.deps, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    if (favorites.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(color: t.chipBg, borderRadius: BorderRadius.circular(14)),
-        child: Row(
-          children: [
-            _tab('Home', Icons.home_outlined, 0),
-            _tab('Work', Icons.work_outline, 1),
-          ],
-        ),
-      );
-    }
+    final hero = deps?.isNotEmpty == true ? deps!.first : null;
+    final urgColor = hero != null ? t.urgencyColor(hero.leaveIn) : t.textTer;
+    final icon = place.kind == PlaceKind.home
+        ? Icons.home_outlined
+        : place.kind == PlaceKind.work
+            ? Icons.work_outline
+            : Icons.star_outline;
+    final subtitle = place.stop.isNotEmpty ? place.stop : null;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _pill('Home', Icons.home_outlined, 0),
-          const SizedBox(width: 8),
-          _pill('Work', Icons.work_outline, 1),
-          for (int i = 0; i < favorites.length; i++) ...[
-            const SizedBox(width: 8),
-            _pill(favorites[i].name, Icons.star_outline, i + 2),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _tab(String label, IconData icon, int index) {
-    final on = selectedIndex == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onSelect(index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          height: 38,
-          decoration: BoxDecoration(
-            color: on ? t.tabActiveBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: on ? [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 3, offset: const Offset(0, 1))] : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 17, color: on ? t.accent : t.textTer),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: on ? t.text : t.textSec)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _pill(String label, IconData icon, int index) {
-    final on = selectedIndex == index;
     return GestureDetector(
-      onTap: () => onSelect(index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: on ? t.tabActiveBg : t.chipBg,
-          borderRadius: BorderRadius.circular(11),
-          border: on ? null : Border.all(color: t.border),
-          boxShadow: on ? [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 3, offset: const Offset(0, 1))] : null,
+          color: t.card,
+          borderRadius: BorderRadius.circular(AppTheme.radius),
+          border: Border.all(color: t.border),
+          boxShadow: t.shadow,
         ),
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 17, color: on ? t.accent : t.textTer),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: on ? t.text : t.textSec)),
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(color: t.chipBg, borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, size: 20, color: t.textSec),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              place.name,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: t.text, letterSpacing: -0.2),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(subtitle,
+                  style: TextStyle(fontSize: 11, color: t.textSec),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 10),
+            ] else
+              const SizedBox(height: 8),
+            if (hero != null) ...[
+              LineBadge(line: hero.line, t: t, size: 22, mode: hero.mode),
+              const SizedBox(height: 6),
+              Text(leaveLabel(hero.leaveIn),
+                  style: TextStyle(fontSize: 12, color: urgColor, fontWeight: FontWeight.w600)),
+            ] else
+              Text('—', style: TextStyle(fontSize: 12, color: t.textTer)),
           ],
         ),
       ),
