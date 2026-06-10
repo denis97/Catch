@@ -6,12 +6,29 @@ import '../theme/app_theme.dart';
 import '../widgets/line_badge.dart';
 import '../widgets/legs_row.dart';
 import '../widgets/pill_button.dart';
+import '../services/reminder_service.dart';
+import '../services/transit_service.dart';
 
 class DetailScreen extends StatefulWidget {
   final AppTheme t;
   final Departure departure;
+  /// Alternative routes (other lines) shown as chips. Usually the
+  /// home-screen departure list.
+  final List<Departure> alts;
+  // When set, later departures are fetched live instead of synthesized.
+  final double? originLat;
+  final double? originLng;
+  final String? destination;
 
-  const DetailScreen({super.key, required this.t, required this.departure});
+  const DetailScreen({
+    super.key,
+    required this.t,
+    required this.departure,
+    this.alts = const [],
+    this.originLat,
+    this.originLng,
+    this.destination,
+  });
 
   @override
   State<DetailScreen> createState() => _DetailScreenState();
@@ -21,12 +38,18 @@ class _DetailScreenState extends State<DetailScreen> {
   late String _selLine;
   int _openIndex = 0;
   Timer? _ticker;
+  List<Departure>? _liveSeries; // all fetched upcoming departures (all lines)
+  bool _fetchingSeries = false;
+
+  bool get _isLive =>
+      widget.originLat != null && widget.originLng != null && widget.destination != null;
 
   @override
   void initState() {
     super.initState();
     _selLine = widget.departure.line;
     _ticker = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
+    if (_isLive) _fetchSeries();
   }
 
   @override
@@ -35,30 +58,97 @@ class _DetailScreenState extends State<DetailScreen> {
     super.dispose();
   }
 
+  Future<void> _fetchSeries() async {
+    setState(() => _fetchingSeries = true);
+    try {
+      final series = await TransitService().getDepartureSeries(
+        originLat: widget.originLat!,
+        originLng: widget.originLng!,
+        destination: widget.destination!,
+      );
+      if (!mounted) return;
+      setState(() { _liveSeries = series; _fetchingSeries = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _fetchingSeries = false); // falls back to synthetic
+    }
+  }
+
   AppTheme get t => widget.t;
   Departure get d => widget.departure;
 
+  /// Unique lines for the chips row, derived from the alternatives.
+  List<Departure> get _chipAlts {
+    final seen = <String>{};
+    final out = <Departure>[];
+    for (final a in [d, ...widget.alts, ...?_liveSeries]) {
+      if (seen.add(a.line)) out.add(a);
+    }
+    return out;
+  }
+
+  /// The departure the series is anchored on (first of the selected line).
+  Departure get _base =>
+      _chipAlts.firstWhere((a) => a.line == _selLine, orElse: () => d);
+
+  /// Upcoming departures of the selected line: live where available,
+  /// padded with synthesized ones to always show a useful list.
+  List<Departure> get _series {
+    final live = (_liveSeries ?? [])
+        .where((x) => x.line == _selLine && x.leaveIn > -5)
+        .toList();
+    if (live.isEmpty) return buildSeries(_base);
+    if (live.length >= 4) return live;
+    final last = live.last;
+    return [
+      ...live,
+      for (int i = 1; i <= 4 - live.length; i++) shiftDeparture(last, i * last.every),
+    ];
+  }
+
+  Future<void> _remind(Departure dep) async {
+    final ok = await ReminderService.instance.scheduleLeaveReminder(dep);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? "Reminder set — we'll ping you 2 min before it's time to leave"
+          : 'Too late to remind — time to go!'),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final top  = MediaQuery.of(context).padding.top;
-    final series = buildSeries(d);
+    final top = MediaQuery.of(context).padding.top;
+    final series = _series;
 
     return Scaffold(
       backgroundColor: t.pageBg,
       body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: _buildHeader(top)),
+          SliverToBoxAdapter(child: _buildHeader(top, series.length)),
           SliverToBoxAdapter(child: _buildAlts()),
+          if (_fetchingSeries)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Center(
+                  child: SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: t.accent)),
+                ),
+              ),
+            ),
           SliverPadding(
-            padding: EdgeInsets.fromLTRB(18, 0, 18, 32),
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 32),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (_, i) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _LeaveTimeCard(
-                    t: t, row: series[i], d: d, line: _selLine,
+                    t: t, d: series[i], rec: i == 0,
                     expanded: _openIndex == i,
                     onToggle: () => setState(() => _openIndex = _openIndex == i ? -1 : i),
+                    onRemind: () => _remind(series[i]),
                   ),
                 ),
                 childCount: series.length,
@@ -70,7 +160,7 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
-  Widget _buildHeader(double top) {
+  Widget _buildHeader(double top, int count) {
     return Container(
       color: t.pageBg,
       padding: EdgeInsets.fromLTRB(12, top + 6, 16, 12),
@@ -85,9 +175,9 @@ class _DetailScreenState extends State<DetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(d.headsign, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.3, color: t.text, height: 1.1)),
+                Text(_base.headsign, style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.3, color: t.text, height: 1.1)),
                 const SizedBox(height: 2),
-                Text('${buildSeries(d).length} ways to leave · from ${d.from}',
+                Text('$count ways to leave · from ${_base.from}',
                     style: TextStyle(fontSize: 12.5, color: t.textSec)),
               ],
             ),
@@ -103,18 +193,19 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   Widget _buildAlts() {
+    final alts = _chipAlts;
     return SizedBox(
       height: 60,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(18, 0, 18, 2),
-        itemCount: kDetailAlts.length,
+        itemCount: alts.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
-          final a  = kDetailAlts[i];
+          final a  = alts[i];
           final on = _selLine == a.line;
           return GestureDetector(
-            onTap: () => setState(() => _selLine = a.line),
+            onTap: () => setState(() { _selLine = a.line; _openIndex = 0; }),
             child: Container(
               padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
               decoration: BoxDecoration(
@@ -133,7 +224,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text('${a.duration} min', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: t.text, height: 1.1)),
-                      Text(a.transfers == 0 ? 'Direct' : '${a.transfers} change',
+                      Text(a.transfers == 0 ? 'Direct' : '${a.transfers} change${a.transfers > 1 ? 's' : ''}',
                           style: TextStyle(fontSize: 11, color: t.textSec)),
                     ],
                   ),
@@ -149,21 +240,21 @@ class _DetailScreenState extends State<DetailScreen> {
 
 class _LeaveTimeCard extends StatelessWidget {
   final AppTheme t;
-  final LeaveSeries row;
   final Departure d;
-  final String line;
+  final bool rec;
   final bool expanded;
   final VoidCallback onToggle;
+  final VoidCallback onRemind;
 
   const _LeaveTimeCard({
-    required this.t, required this.row, required this.d,
-    required this.line, required this.expanded, required this.onToggle,
+    required this.t, required this.d, required this.rec,
+    required this.expanded, required this.onToggle, required this.onRemind,
   });
 
   @override
   Widget build(BuildContext context) {
-    final urgColor = t.urgencyColor(row.leaveIn);
-    final urgBg    = t.urgencyBg(row.leaveIn);
+    final urgColor = t.urgencyColor(d.leaveIn);
+    final urgBg    = t.urgencyBg(d.leaveIn);
     final ride = d.duration - 2 * d.walk;
 
     return GestureDetector(
@@ -173,7 +264,7 @@ class _LeaveTimeCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: t.card,
           borderRadius: BorderRadius.circular(AppTheme.radius),
-          border: Border.all(color: row.rec ? t.accent : t.border),
+          border: Border.all(color: rec ? t.accent : t.border),
           boxShadow: t.shadow,
         ),
         child: Column(
@@ -186,7 +277,7 @@ class _LeaveTimeCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (row.rec) ...[
+                      if (rec) ...[
                         Container(
                           height: 20,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -208,7 +299,7 @@ class _LeaveTimeCard extends StatelessWidget {
                         children: [
                           Text('Leave', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.textTer, letterSpacing: 0.6)),
                           const SizedBox(width: 8),
-                          Text(row.leave, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.6, color: t.text,
+                          Text(fmtClock(d.departMin - d.walk), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.6, color: t.text,
                               fontFeatures: const [FontFeature.tabularFigures()])),
                         ],
                       ),
@@ -225,7 +316,7 @@ class _LeaveTimeCard extends StatelessWidget {
                       height: 24, padding: const EdgeInsets.symmetric(horizontal: 9),
                       decoration: BoxDecoration(color: urgBg, borderRadius: BorderRadius.circular(7)),
                       child: Center(
-                        child: Text(leaveLabel(row.leaveIn),
+                        child: Text(leaveLabel(d.leaveIn),
                             style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: urgColor)),
                       ),
                     ),
@@ -233,7 +324,7 @@ class _LeaveTimeCard extends StatelessWidget {
                     RichText(
                       text: TextSpan(children: [
                         TextSpan(text: 'arrive ', style: TextStyle(fontSize: 12.5, color: t.textSec)),
-                        TextSpan(text: row.arrive, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: t.text,
+                        TextSpan(text: d.arrive, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: t.text,
                             fontFeatures: const [FontFeature.tabularFigures()])),
                       ]),
                     ),
@@ -248,11 +339,12 @@ class _LeaveTimeCard extends StatelessWidget {
               const SizedBox(height: 14),
               Divider(color: t.separator, height: 1),
               const SizedBox(height: 14),
-              _buildLegs(line, ride),
+              _buildLegs(d.line, ride),
               const SizedBox(height: 4),
               PillButton(
                 t: t, label: 'Remind me to leave', height: 46,
                 icon: const Icon(Icons.notifications_none, size: 17, color: Colors.white),
+                onTap: onRemind,
               ),
             ],
           ],
@@ -262,14 +354,11 @@ class _LeaveTimeCard extends StatelessWidget {
   }
 
   Widget _buildLegs(String selectedLine, int rideMin) {
-    final lineMode = kLineColors.containsKey(selectedLine)
-        ? _lineMode(selectedLine)
-        : TransitMode.bus;
-    final lineColor = kLineColors[selectedLine] ?? t.textTer;
+    final legColor = lineColor(selectedLine);
 
     final steps = [
       _Step(TransitMode.walk, 'Walk ${d.walk} min to ${d.from}', null),
-      _Step(lineMode, '$selectedLine · $rideMin min ride', selectedLine),
+      _Step(d.mode, '$selectedLine · $rideMin min ride', selectedLine),
       _Step(TransitMode.walk, 'Walk ${d.walk} min to ${d.headsign}', null),
     ];
 
@@ -292,7 +381,7 @@ class _LeaveTimeCard extends StatelessWidget {
                             decoration: BoxDecoration(
                               border: Border(
                                 left: BorderSide(
-                                  color: steps[i].line == null ? t.textTer : lineColor,
+                                  color: steps[i].line == null ? t.textTer : legColor,
                                   width: 2,
                                   style: steps[i].line == null ? BorderStyle.none : BorderStyle.solid,
                                 ),
@@ -320,7 +409,7 @@ class _LeaveTimeCard extends StatelessWidget {
                             shape: BoxShape.circle,
                             color: t.card,
                             border: Border.all(
-                              color: steps[i].line == null ? t.textTer : lineColor,
+                              color: steps[i].line == null ? t.textTer : legColor,
                               width: 2.5,
                             ),
                           ),
@@ -338,7 +427,7 @@ class _LeaveTimeCard extends StatelessWidget {
                         Icon(
                           _modeIconData(steps[i].mode),
                           size: 16,
-                          color: steps[i].line == null ? t.textTer : lineColor,
+                          color: steps[i].line == null ? t.textTer : legColor,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -358,14 +447,6 @@ class _LeaveTimeCard extends StatelessWidget {
           ),
       ],
     );
-  }
-
-  TransitMode _lineMode(String l) {
-    const modes = {
-      '14B': TransitMode.bus, '2': TransitMode.tram,
-      'M3': TransitMode.metro, 'RX': TransitMode.train, 'F1': TransitMode.ferry,
-    };
-    return modes[l] ?? TransitMode.bus;
   }
 
   IconData _modeIconData(TransitMode m) {

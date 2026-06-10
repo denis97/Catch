@@ -8,8 +8,10 @@ class TransitService {
     required double originLat,
     required double originLng,
     required String destination,
+    DateTime? departureTime,
   }) async {
-    final departureTimeSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final departureTimeSec =
+        (departureTime ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
 
     final uri = Uri.https('maps.googleapis.com', '/maps/api/directions/json', {
       'origin': '$originLat,$originLng',
@@ -38,6 +40,39 @@ class TransitService {
 
     deps.sort((a, b) => a.leaveIn.compareTo(b.leaveIn));
     return deps;
+  }
+
+  /// Probes several shifted departure times to build a series of upcoming
+  /// departures (the Directions API only returns the next one per request).
+  Future<List<Departure>> getDepartureSeries({
+    required double originLat,
+    required double originLng,
+    required String destination,
+    int probes = 4,
+    int stepMin = 12,
+  }) async {
+    final now = DateTime.now();
+    final byKey = <String, Departure>{};
+
+    for (int i = 0; i < probes; i++) {
+      try {
+        final deps = await getDepartures(
+          originLat: originLat,
+          originLng: originLng,
+          destination: destination,
+          departureTime: now.add(Duration(minutes: i * stepMin)),
+        );
+        for (final d in deps) {
+          byKey['${d.line}|${d.depart}'] = d;
+        }
+      } catch (_) {
+        if (byKey.isEmpty && i == probes - 1) rethrow;
+      }
+    }
+
+    final all = byKey.values.toList()
+      ..sort((a, b) => a.leaveIn.compareTo(b.leaveIn));
+    return all;
   }
 
   Departure? _parseRoute(Map<String, dynamic> route, int index, DateTime now) {
@@ -99,7 +134,7 @@ class TransitService {
     final mode        = _vehicleMode(vehicleType);
 
     return Departure(
-      id:       'r$index',
+      id:       '$lineName-$departureUnix',
       line:     lineName,
       headsign: headsign,
       from:     (depStop['name'] as String?) ?? '',

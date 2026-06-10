@@ -1,13 +1,18 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../data/models.dart';
+import '../data/places_repository.dart';
+import '../services/location_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/line_badge.dart';
 import '../widgets/pill_button.dart';
+import 'address_search_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final AppTheme t;
+  final PlacesRepository places;
   final VoidCallback onFinish;
-  const OnboardingScreen({super.key, required this.t, required this.onFinish});
+  const OnboardingScreen({super.key, required this.t, required this.places, required this.onFinish});
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -16,6 +21,7 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int _step = 0;
   static const int _total = 3;
+  bool _requestingLocation = false;
 
   AppTheme get t => widget.t;
 
@@ -25,6 +31,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } else {
       widget.onFinish();
     }
+  }
+
+  Future<void> _allowLocation() async {
+    setState(() => _requestingLocation = true);
+    await LocationService().getPosition(); // triggers the OS permission dialog
+    if (!mounted) return;
+    setState(() => _requestingLocation = false);
+    _next();
+  }
+
+  Future<void> _editPlace(PlaceKind kind) async {
+    final picked = await Navigator.push<PickedPlace>(
+      context,
+      MaterialPageRoute(builder: (_) => AddressSearchScreen(
+        t: t,
+        title: kind == PlaceKind.home ? 'Set Home' : 'Set Work',
+      )),
+    );
+    if (picked == null) return;
+    await widget.places.upsert(Place(
+      id: kind.name,
+      kind: kind,
+      name: kind == PlaceKind.home ? 'Home' : 'Work',
+      address: picked.address,
+      lat: picked.lat,
+      lng: picked.lng,
+    ));
+    if (mounted) setState(() {});
   }
 
   @override
@@ -123,6 +157,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _stepAnchors() {
+    final home = widget.places.home;
+    final work = widget.places.work;
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,24 +171,50 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           style: TextStyle(fontSize: 15, color: t.textSec, height: 1.5),
         ),
         const SizedBox(height: 24),
-        _PlaceField(t: t, icon: Icons.home_outlined,   label: 'Home', value: '14 Maple Ave',                    tint: t.accent),
+        _PlaceField(
+          t: t, icon: Icons.home_outlined, label: 'Home',
+          value: home?.address, placeholder: 'Add your home address',
+          tint: t.accent, onTap: () => _editPlace(PlaceKind.home),
+        ),
         const SizedBox(height: 12),
-        _PlaceField(t: t, icon: Icons.work_outline,    label: 'Work', value: 'Northgate Studio, Tech Quarter',  tint: const Color(0xFF2D6CDF)),
+        _PlaceField(
+          t: t, icon: Icons.work_outline, label: 'Work',
+          value: work?.address, placeholder: 'Add your work address',
+          tint: const Color(0xFF2D6CDF), onTap: () => _editPlace(PlaceKind.work),
+        ),
       ],
     );
   }
 
   Widget _buttons() {
-    final (primary, ghost) = switch (_step) {
-      0 => ('Get started',      'I already have an account'),
-      1 => ('Allow location',   'Enter location manually'),
-      _ => ("I'm all set",      'Skip for now'),
+    final hasAnchors = widget.places.home != null && widget.places.work != null;
+    final (String primary, String ghost) = switch (_step) {
+      0 => ('Get started',    'I already have an account'),
+      1 => ('Allow location', 'Enter location manually'),
+      _ => ("I'm all set",    'Skip for now'),
     };
+    final primaryEnabled = _step != 2 || hasAnchors;
+
     return Column(
       children: [
-        PillButton(t: t, label: primary, onTap: _next),
+        Opacity(
+          opacity: primaryEnabled ? 1 : 0.45,
+          child: PillButton(
+            t: t,
+            label: _requestingLocation ? 'Requesting…' : primary,
+            onTap: () {
+              if (!primaryEnabled || _requestingLocation) return;
+              if (_step == 1) {
+                _allowLocation();
+              } else {
+                _next();
+              }
+            },
+          ),
+        ),
         const SizedBox(height: 6),
-        PillButton(t: t, label: ghost, ghost: true, height: 46, onTap: widget.onFinish),
+        PillButton(t: t, label: ghost, ghost: true, height: 46,
+            onTap: _step == 1 ? _next : widget.onFinish),
       ],
     );
   }
@@ -209,40 +271,54 @@ class _PlaceField extends StatelessWidget {
   final AppTheme t;
   final IconData icon;
   final String label;
-  final String value;
+  final String? value;
+  final String placeholder;
   final Color tint;
-  const _PlaceField({required this.t, required this.icon, required this.label, required this.value, required this.tint});
+  final VoidCallback onTap;
+  const _PlaceField({
+    required this.t, required this.icon, required this.label,
+    required this.value, required this.placeholder,
+    required this.tint, required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: t.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: t.border),
-        boxShadow: t.shadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular(11)),
-            child: Icon(icon, size: 20, color: Colors.white),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label.toUpperCase(), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: t.textTer, letterSpacing: 0.5)),
-                const SizedBox(height: 1),
-                Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: t.text)),
-              ],
+    final isSet = value != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: t.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: t.border),
+          boxShadow: t.shadow,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular(11)),
+              child: Icon(icon, size: 20, color: Colors.white),
             ),
-          ),
-          Icon(Icons.check, size: 20, color: t.accent),
-        ],
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label.toUpperCase(), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: t.textTer, letterSpacing: 0.5)),
+                  const SizedBox(height: 1),
+                  Text(
+                    value ?? placeholder,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: isSet ? t.text : t.textTer),
+                  ),
+                ],
+              ),
+            ),
+            Icon(isSet ? Icons.check : Icons.add, size: 20, color: isSet ? t.accent : t.textTer),
+          ],
+        ),
       ),
     );
   }

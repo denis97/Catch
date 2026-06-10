@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../theme/app_theme.dart';
+import 'line_badge.dart';
 import 'mode_icon.dart';
 
 class LegsRow extends StatelessWidget {
@@ -24,10 +25,10 @@ class LegsRow extends StatelessWidget {
 
   Widget _pill(Leg leg) {
     final isWalk = leg.mode == TransitMode.walk;
-    final lineColor = leg.line != null ? (kLineColors[leg.line!]) : null;
-    final bg    = lineColor ?? t.chipBg;
-    final fg    = lineColor != null ? Colors.white : t.textSec;
-    final label = isWalk ? '${leg.minutes}' : (compact ? (leg.line ?? '') : (leg.line ?? ''));
+    final color  = leg.line != null ? lineColor(leg.line!) : null;
+    final bg     = color ?? t.chipBg;
+    final fg     = color != null ? Colors.white : t.textSec;
+    final label  = isWalk ? '${leg.minutes}' : (leg.line ?? '');
 
     return Container(
       height: 24,
@@ -38,7 +39,7 @@ class LegsRow extends StatelessWidget {
         children: [
           ModeIcon(mode: leg.mode, size: 14, color: fg, strokeWidth: 1.9),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 12.5, fontWeight: lineColor != null ? FontWeight.w700 : FontWeight.w600, color: fg)),
+          Text(label, style: TextStyle(fontSize: 12.5, fontWeight: color != null ? FontWeight.w700 : FontWeight.w600, color: fg)),
         ],
       ),
     );

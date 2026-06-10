@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'data/places_repository.dart';
+import 'services/reminder_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -10,6 +12,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   final onboarded = prefs.getBool('onboarded') ?? false;
+  await ReminderService.instance.init();
   runApp(CatchApp(onboarded: onboarded, prefs: prefs));
 }
 
@@ -24,6 +27,7 @@ class CatchApp extends StatefulWidget {
 
 class _CatchAppState extends State<CatchApp> {
   late bool _onboarded;
+  late PlacesRepository _places;
   bool _isDark = true;
 
   AppTheme get _theme => AppTheme(accent: kDefaultAccent, dark: _isDark);
@@ -32,6 +36,7 @@ class _CatchAppState extends State<CatchApp> {
   void initState() {
     super.initState();
     _onboarded = widget.onboarded;
+    _places = PlacesRepository(widget.prefs);
     _syncStatusBar(_isDark);
   }
 
@@ -70,8 +75,8 @@ class _CatchAppState extends State<CatchApp> {
         highlightColor: Colors.transparent,
       ),
       home: _onboarded
-          ? HomeScreen(t: t, onToggleTheme: _toggleTheme)
-          : OnboardingScreen(t: t, onFinish: _finishOnboarding),
+          ? HomeScreen(t: t, places: _places, onToggleTheme: _toggleTheme)
+          : OnboardingScreen(t: t, places: _places, onFinish: _finishOnboarding),
     );
   }
 }

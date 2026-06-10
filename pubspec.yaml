@@ -35,10 +35,14 @@ dependencies:
   shared_preferences: ^2.3.2
   http: ^1.2.0
   geolocator: ^13.0.0
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -85,3 +89,18 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#2AA198"
+  adaptive_icon_foreground: "assets/icon/icon_fg.png"
+  remove_alpha_ios: true
+
+flutter_native_splash:
+  color: "#0C0E11"
+  image: assets/icon/icon_fg.png
+  android_12:
+    color: "#0C0E11"
+    image: assets/icon/icon_fg.png

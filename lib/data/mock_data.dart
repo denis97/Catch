@@ -9,7 +9,7 @@ String _fmt(DateTime dt) {
   return '$h:$m $ampm';
 }
 
-String _fmtMin(int min) {
+String fmtClock(int min) {
   int h = (min ~/ 60) % 12;
   if (h == 0) h = 12;
   final m = min % 60;
@@ -17,11 +17,6 @@ String _fmtMin(int min) {
 }
 
 String get nowLabel => _fmt(DateTime.now());
-
-int get _nowMin {
-  final n = DateTime.now();
-  return n.hour * 60 + n.minute;
-}
 
 // inMin: bus departs this many minutes from now
 Departure _dep(
@@ -79,27 +74,30 @@ List<Departure> get kWorkDeps => [
     legs: [Leg(TransitMode.walk, 4), Leg(TransitMode.bus,   18, '14B'), Leg(TransitMode.walk, 4)]),
 ];
 
-const List<RouteAlt> kDetailAlts = [
-  RouteAlt(line: '14B', mode: TransitMode.bus,   label: 'Bus 14B',  sub: 'Direct · every 10 min',   duration: 26, transfers: 0),
-  RouteAlt(line: '2',   mode: TransitMode.tram,  label: 'Tram 2',   sub: 'Direct · every 12 min',   duration: 24, transfers: 0),
-  RouteAlt(line: 'RX',  mode: TransitMode.train, label: 'Train RX', sub: '1 change · every 15 min', duration: 24, transfers: 1),
-];
-
-List<LeaveSeries> buildSeries(Departure d, {int count = 6}) {
-  final nowMin = _nowMin;
-  return List.generate(count, (i) {
-    final depart   = d.departMin + i * d.every;
-    final leaveMin = depart - d.walk;
-    return LeaveSeries(
-      index:   i,
-      depart:  _fmtMin(depart),
-      arrive:  _fmtMin(depart + d.duration - d.walk),
-      leave:   _fmtMin(leaveMin),
-      leaveIn: leaveMin - nowMin,
-      rec:     i == 0,
-    );
-  });
+/// A copy of [d] departing [byMin] minutes later, with all derived fields
+/// recomputed. Used to synthesize later departures from a known one.
+Departure shiftDeparture(Departure d, int byMin) {
+  final departMin = d.departMin + byMin;
+  return Departure(
+    id:        '${d.id}+$byMin',
+    line:      d.line,
+    headsign:  d.headsign,
+    from:      d.from,
+    walk:      d.walk,
+    leaveIn:   d.leaveIn + byMin,
+    depart:    fmtClock(departMin),
+    arrive:    fmtClock(departMin + d.duration - d.walk),
+    duration:  d.duration,
+    every:     d.every,
+    legs:      d.legs,
+    transfers: d.transfers,
+    departMin: departMin,
+  );
 }
+
+/// Synthesized series of upcoming departures based on the line frequency.
+List<Departure> buildSeries(Departure d, {int count = 6}) =>
+    List.generate(count, (i) => shiftDeparture(d, i * d.every));
 
 String leaveLabel(int leaveIn) {
   if (leaveIn <= 0) return 'Just missed';

@@ -39,6 +39,14 @@ class Departure {
     this.transfers = 0,
     this.departMin = 0,
   });
+
+  /// The primary (non-walk) transit mode of this departure.
+  TransitMode get mode {
+    for (final l in legs) {
+      if (l.mode != TransitMode.walk) return l.mode;
+    }
+    return TransitMode.bus;
+  }
 }
 
 class Place {
@@ -48,49 +56,49 @@ class Place {
   final String address;
   final String stop;
   final int walk;
+  final double? lat;
+  final double? lng;
 
   const Place({
     required this.id,
     required this.kind,
     required this.name,
     required this.address,
-    required this.stop,
-    required this.walk,
+    this.stop = '',
+    this.walk = 0,
+    this.lat,
+    this.lng,
   });
-}
 
-class LeaveSeries {
-  final int index;
-  final String depart;
-  final String arrive;
-  final String leave;
-  final int leaveIn;
-  final bool rec;
+  bool get hasCoords => lat != null && lng != null;
 
-  const LeaveSeries({
-    required this.index,
-    required this.depart,
-    required this.arrive,
-    required this.leave,
-    required this.leaveIn,
-    required this.rec,
-  });
-}
 
-class RouteAlt {
-  final String line;
-  final TransitMode mode;
-  final String label;
-  final String sub;
-  final int duration;
-  final int transfers;
+  /// Destination string for the Directions API — coordinates when known,
+  /// otherwise the raw address.
+  String get destinationParam => hasCoords ? '$lat,$lng' : address;
 
-  const RouteAlt({
-    required this.line,
-    required this.mode,
-    required this.label,
-    required this.sub,
-    required this.duration,
-    required this.transfers,
-  });
+  Place copyWith({String? name, String? address, double? lat, double? lng}) => Place(
+        id: id, kind: kind,
+        name: name ?? this.name,
+        address: address ?? this.address,
+        stop: stop, walk: walk,
+        lat: lat ?? this.lat,
+        lng: lng ?? this.lng,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id, 'kind': kind.name, 'name': name, 'address': address,
+        'stop': stop, 'walk': walk, 'lat': lat, 'lng': lng,
+      };
+
+  factory Place.fromJson(Map<String, dynamic> j) => Place(
+        id: j['id'] as String,
+        kind: PlaceKind.values.byName(j['kind'] as String),
+        name: j['name'] as String,
+        address: j['address'] as String,
+        stop: (j['stop'] as String?) ?? '',
+        walk: (j['walk'] as int?) ?? 0,
+        lat: (j['lat'] as num?)?.toDouble(),
+        lng: (j['lng'] as num?)?.toDouble(),
+      );
 }
