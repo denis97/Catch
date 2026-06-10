@@ -57,6 +57,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       address: picked.address,
       lat: picked.lat,
       lng: picked.lng,
+      placeId: picked.placeId,
     ));
     if (mounted) setState(() {});
   }

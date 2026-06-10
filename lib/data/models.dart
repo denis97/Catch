@@ -64,6 +64,7 @@ class Place {
   final int walk;
   final double? lat;
   final double? lng;
+  final String? placeId;
 
   const Place({
     required this.id,
@@ -74,15 +75,15 @@ class Place {
     this.walk = 0,
     this.lat,
     this.lng,
+    this.placeId,
   });
 
   bool get hasCoords => lat != null && lng != null;
 
-
   /// Destination string for the Directions API.
-  /// Always uses the address so the API routes to the correct entrance/hub
-  /// (coordinates snap to the nearest road, which is wrong for large places).
-  String get destinationParam => address;
+  /// place_id is the most precise (same routing as Google Maps app).
+  /// Falls back to address string if place_id not available.
+  String get destinationParam => placeId != null ? 'place_id:$placeId' : address;
 
   Place copyWith({String? name, String? address, double? lat, double? lng}) => Place(
         id: id, kind: kind,
@@ -91,11 +92,12 @@ class Place {
         stop: stop, walk: walk,
         lat: lat ?? this.lat,
         lng: lng ?? this.lng,
+        placeId: placeId,
       );
 
   Map<String, dynamic> toJson() => {
         'id': id, 'kind': kind.name, 'name': name, 'address': address,
-        'stop': stop, 'walk': walk, 'lat': lat, 'lng': lng,
+        'stop': stop, 'walk': walk, 'lat': lat, 'lng': lng, 'placeId': placeId,
       };
 
   factory Place.fromJson(Map<String, dynamic> j) => Place(
@@ -107,5 +109,6 @@ class Place {
         walk: (j['walk'] as int?) ?? 0,
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
+        placeId: j['placeId'] as String?,
       );
 }

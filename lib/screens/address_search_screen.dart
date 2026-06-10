@@ -10,7 +10,8 @@ class PickedPlace {
   final String address;
   final double? lat;
   final double? lng;
-  const PickedPlace({required this.name, required this.address, this.lat, this.lng});
+  final String? placeId;
+  const PickedPlace({required this.name, required this.address, this.lat, this.lng, this.placeId});
 }
 
 class AddressSearchScreen extends StatefulWidget {
@@ -73,7 +74,7 @@ class _AddressSearchScreenState extends State<AddressSearchScreen> {
     try {
       final d = await _places.details(s.placeId, sessionToken: _sessionToken);
       if (!mounted) return;
-      Navigator.pop(context, PickedPlace(name: d.name, address: d.address, lat: d.lat, lng: d.lng));
+      Navigator.pop(context, PickedPlace(name: d.name, address: d.address, lat: d.lat, lng: d.lng, placeId: s.placeId));
     } on PlacesApiException catch (e) {
       if (!mounted) return;
       setState(() { _error = e.message; _resolving = false; });

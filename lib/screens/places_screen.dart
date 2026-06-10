@@ -47,6 +47,7 @@ class _PlacesScreenState extends State<PlacesScreen> {
       address: picked.address,
       lat: picked.lat,
       lng: picked.lng,
+      placeId: picked.placeId,
     ));
     if (mounted) setState(() {});
   }
@@ -64,6 +65,7 @@ class _PlacesScreenState extends State<PlacesScreen> {
       address: picked.address,
       lat: picked.lat,
       lng: picked.lng,
+      placeId: picked.placeId,
     ));
     if (mounted) setState(() {});
   }
