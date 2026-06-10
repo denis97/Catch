@@ -79,9 +79,10 @@ class Place {
   bool get hasCoords => lat != null && lng != null;
 
 
-  /// Destination string for the Directions API — coordinates when known,
-  /// otherwise the raw address.
-  String get destinationParam => hasCoords ? '$lat,$lng' : address;
+  /// Destination string for the Directions API.
+  /// Always uses the address so the API routes to the correct entrance/hub
+  /// (coordinates snap to the nearest road, which is wrong for large places).
+  String get destinationParam => address;
 
   Place copyWith({String? name, String? address, double? lat, double? lng}) => Place(
         id: id, kind: kind,
