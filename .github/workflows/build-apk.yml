@@ -17,11 +17,22 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # Caches and reuses Gradle wrapper + dependency downloads between runs
+      - uses: gradle/actions/setup-gradle@v4
+
+      # cache: true caches the Flutter SDK + pub packages
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.32.2
           channel: stable
           cache: true
+
+      # The pinned NDK 27 is ~600 MB to download; cache it
+      - name: Cache Android NDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/27.0.12077973
+          key: ndk-27.0.12077973
 
       - name: Get dependencies
         run: flutter pub get
