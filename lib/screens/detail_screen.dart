@@ -255,7 +255,6 @@ class _LeaveTimeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final urgColor = t.urgencyColor(d.leaveIn);
     final urgBg    = t.urgencyBg(d.leaveIn);
-    final ride = d.duration - 2 * d.walk;
 
     return GestureDetector(
       onTap: onToggle,
@@ -339,7 +338,7 @@ class _LeaveTimeCard extends StatelessWidget {
               const SizedBox(height: 14),
               Divider(color: t.separator, height: 1),
               const SizedBox(height: 14),
-              _buildLegs(d.line, ride),
+              _buildLegs(),
               const SizedBox(height: 4),
               PillButton(
                 t: t, label: 'Remind me to leave', height: 46,
@@ -353,14 +352,30 @@ class _LeaveTimeCard extends StatelessWidget {
     );
   }
 
-  Widget _buildLegs(String selectedLine, int rideMin) {
-    final legColor = lineColor(selectedLine);
+  Widget _buildLegs() {
+    final List<_Step> steps;
 
-    final steps = [
-      _Step(TransitMode.walk, 'Walk ${d.walk} min to ${d.from}', null),
-      _Step(d.mode, '$selectedLine · $rideMin min ride', selectedLine),
-      _Step(TransitMode.walk, 'Walk ${d.walk} min to ${d.headsign}', null),
-    ];
+    if (d.legs.isEmpty) {
+      // Fallback for mock / legacy data with no legs populated
+      steps = [
+        _Step(TransitMode.walk, 'Walk ${d.walk} min to ${d.from}', null),
+        _Step(d.mode, d.line, d.line),
+        _Step(TransitMode.walk, 'Walk', null),
+      ];
+    } else {
+      steps = [];
+      for (int i = 0; i < d.legs.length; i++) {
+        final leg = d.legs[i];
+        if (leg.mode == TransitMode.walk) {
+          final label = i == 0
+              ? 'Walk ${leg.minutes} min to ${d.from}'
+              : 'Walk ${leg.minutes} min';
+          steps.add(_Step(TransitMode.walk, label, null));
+        } else {
+          steps.add(_Step(leg.mode, '${leg.line} · ${leg.minutes} min', leg.line));
+        }
+      }
+    }
 
     return Column(
       children: [
@@ -381,7 +396,7 @@ class _LeaveTimeCard extends StatelessWidget {
                             decoration: BoxDecoration(
                               border: Border(
                                 left: BorderSide(
-                                  color: steps[i].line == null ? t.textTer : legColor,
+                                  color: steps[i].line == null ? t.textTer : lineColor(steps[i].line!),
                                   width: 2,
                                   style: steps[i].line == null ? BorderStyle.none : BorderStyle.solid,
                                 ),
@@ -409,7 +424,7 @@ class _LeaveTimeCard extends StatelessWidget {
                             shape: BoxShape.circle,
                             color: t.card,
                             border: Border.all(
-                              color: steps[i].line == null ? t.textTer : legColor,
+                              color: steps[i].line == null ? t.textTer : lineColor(steps[i].line!),
                               width: 2.5,
                             ),
                           ),
@@ -423,11 +438,10 @@ class _LeaveTimeCard extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 14),
                     child: Row(
                       children: [
-                        // small mode icon
                         Icon(
                           _modeIconData(steps[i].mode),
                           size: 16,
-                          color: steps[i].line == null ? t.textTer : legColor,
+                          color: steps[i].line == null ? t.textTer : lineColor(steps[i].line!),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
