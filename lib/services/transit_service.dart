@@ -9,6 +9,8 @@ class TransitService {
   static final Map<String, (DateTime, List<Departure>)> _cache = {};
   static const _cacheTtl = Duration(minutes: 2);
 
+  static void clearCache() => _cache.clear();
+
   Future<List<Departure>> getDepartures({
     required double originLat,
     required double originLng,

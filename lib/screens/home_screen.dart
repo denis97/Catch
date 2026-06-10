@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import '../data/mock_data.dart';
 import '../data/models.dart';
@@ -223,7 +224,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ? Center(child: CircularProgressIndicator(color: t.accent))
           : RefreshIndicator(
               color: t.accent,
-              onRefresh: () => _fetch(forceLocation: true),
+              onRefresh: () {
+                _depsCache.clear();
+                TransitService.clearCache();
+                return _fetch(forceLocation: true).then((_) => _prefetchOthers());
+              },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(18, top + 18, 18, 32),
@@ -263,6 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     t: t, d: _deps.first,
                                     onTap: () => _openDetail(_deps.first),
                                     onRemind: () => _remind(_deps.first),
+                                    onOpenMaps: _openMaps,
                                   ),
                                   if (_otherPlaces.isNotEmpty) ...[
                                     const SizedBox(height: 22),
@@ -318,10 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
             t: t,
             place: places[i],
             deps: _depsCache[places[i].destinationParam],
-            onTap: () {
-              setState(() { _selectedIndex = _placeIndex(places[i]); _auto = false; });
-              _fetch(inline: true);
-            },
+            onTap: () => _selectDestination(places[i]),
           )),
           const SizedBox(width: 12),
           if (i + 1 < places.length)
@@ -329,10 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
               t: t,
               place: places[i + 1],
               deps: _depsCache[places[i + 1].destinationParam],
-              onTap: () {
-                setState(() { _selectedIndex = _placeIndex(places[i + 1]); _auto = false; });
-                _fetch(inline: true);
-              },
+              onTap: () => _selectDestination(places[i + 1]),
             ))
           else
             const Expanded(child: SizedBox()),
@@ -340,6 +340,33 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
     }
     return Column(children: rows);
+  }
+
+  void _selectDestination(Place place) {
+    final cached = _depsCache[place.destinationParam];
+    if (cached != null) {
+      // Serve instantly from cache — no network call needed.
+      setState(() {
+        _selectedIndex = _placeIndex(place);
+        _auto = false;
+        _destination = place.destinationParam;
+        _deps = cached;
+      });
+    } else {
+      setState(() { _selectedIndex = _placeIndex(place); _auto = false; });
+      _fetch(inline: true);
+    }
+  }
+
+  Future<void> _openMaps() async {
+    final place = _selectedPlace;
+    if (place == null) return;
+    final dest = place.hasCoords ? '${place.lat},${place.lng}' : Uri.encodeComponent(place.address);
+    final origin = _pos != null ? '&origin=${_pos!.latitude},${_pos!.longitude}' : '';
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1$origin&destination=$dest&travelmode=transit',
+    );
+    if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   void _openDetail(Departure d) {
@@ -543,7 +570,8 @@ class _DepartureHero extends StatelessWidget {
   final Departure d;
   final VoidCallback onTap;
   final VoidCallback onRemind;
-  const _DepartureHero({required this.t, required this.d, required this.onTap, required this.onRemind});
+  final VoidCallback? onOpenMaps;
+  const _DepartureHero({required this.t, required this.d, required this.onTap, required this.onRemind, this.onOpenMaps});
 
   @override
   Widget build(BuildContext context) {
@@ -633,7 +661,33 @@ class _DepartureHero extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 11),
-                  LegsRow(legs: d.legs, t: t),
+                  Row(
+                    children: [
+                      Expanded(child: LegsRow(legs: d.legs, t: t)),
+                      if (onOpenMaps != null) ...[
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: onOpenMaps,
+                          child: Container(
+                            height: 26,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: t.chipBg,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.directions_outlined, size: 13, color: t.textSec),
+                                const SizedBox(width: 4),
+                                Text('Maps', style: TextStyle(fontSize: 11.5, color: t.textSec, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
