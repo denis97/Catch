@@ -14,15 +14,13 @@ class Departure {
   final String headsign;
   final String from;
   final int walk;
-  final int leaveIn;
   final String depart;
   final String arrive;
   final int duration;
   final int every;
   final List<Leg> legs;
   final int transfers;
-
-  final int departMin; // minutes since midnight, used for live series
+  final int departMin; // minutes since midnight
 
   const Departure({
     required this.id,
@@ -30,7 +28,6 @@ class Departure {
     required this.headsign,
     required this.from,
     required this.walk,
-    required this.leaveIn,
     required this.depart,
     required this.arrive,
     required this.duration,
@@ -39,6 +36,15 @@ class Departure {
     this.transfers = 0,
     this.departMin = 0,
   });
+
+  /// Minutes until the user must walk out — computed from the departure
+  /// time so countdowns stay accurate without refetching.
+  int get leaveIn {
+    final now = DateTime.now();
+    var diff = departMin - walk - (now.hour * 60 + now.minute);
+    if (diff < -720) diff += 1440; // departure is past midnight
+    return diff;
+  }
 
   /// The primary (non-walk) transit mode of this departure.
   TransitMode get mode {

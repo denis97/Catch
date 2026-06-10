@@ -33,7 +33,6 @@ Departure _dep(
   final departMin = departAt.hour * 60 + departAt.minute;
   return Departure(
     id: id, line: line, headsign: headsign, from: from, walk: walk,
-    leaveIn:   inMin - walk,
     depart:    _fmt(departAt),
     arrive:    _fmt(departAt.add(Duration(minutes: ride))),
     duration:  walk + ride + walk,
@@ -84,7 +83,6 @@ Departure shiftDeparture(Departure d, int byMin) {
     headsign:  d.headsign,
     from:      d.from,
     walk:      d.walk,
-    leaveIn:   d.leaveIn + byMin,
     depart:    fmtClock(departMin),
     arrive:    fmtClock(departMin + d.duration - d.walk),
     duration:  d.duration,

@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     widget.places.addListener(_onPlacesChanged);
     _fetch();
-    _ticker = Timer.periodic(const Duration(minutes: 1), (_) => _fetch());
+    _ticker = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
   }
 
   @override

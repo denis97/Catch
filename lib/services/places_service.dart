@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 import '../config.dart';
 
@@ -25,11 +26,19 @@ class PlaceDetails {
 }
 
 class PlacesService {
-  Future<List<PlaceSuggestion>> autocomplete(String input) async {
-    final uri = Uri.https('maps.googleapis.com', '/maps/api/place/autocomplete/json', {
+  static String newSessionToken() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    final rnd = Random();
+    return List.generate(36, (_) => chars[rnd.nextInt(chars.length)]).join();
+  }
+
+  Future<List<PlaceSuggestion>> autocomplete(String input, {String? sessionToken}) async {
+    final params = {
       'input': input,
       'key': kGoogleMapsApiKey,
-    });
+      if (sessionToken != null) 'sessiontoken': sessionToken,
+    };
+    final uri = Uri.https('maps.googleapis.com', '/maps/api/place/autocomplete/json', params);
 
     final body = await _get(uri);
     final status = body['status'] as String;
@@ -50,12 +59,14 @@ class PlacesService {
     }).toList();
   }
 
-  Future<PlaceDetails> details(String placeId) async {
-    final uri = Uri.https('maps.googleapis.com', '/maps/api/place/details/json', {
+  Future<PlaceDetails> details(String placeId, {String? sessionToken}) async {
+    final params = {
       'place_id': placeId,
       'fields': 'name,formatted_address,geometry/location',
       'key': kGoogleMapsApiKey,
-    });
+      if (sessionToken != null) 'sessiontoken': sessionToken,
+    };
+    final uri = Uri.https('maps.googleapis.com', '/maps/api/place/details/json', params);
 
     final body = await _get(uri);
     final status = body['status'] as String;

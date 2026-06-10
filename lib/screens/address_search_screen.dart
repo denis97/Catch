@@ -26,12 +26,19 @@ class _AddressSearchScreenState extends State<AddressSearchScreen> {
   final _controller = TextEditingController();
   final _places = PlacesService();
   Timer? _debounce;
+  late String _sessionToken;
   List<PlaceSuggestion> _suggestions = [];
   String? _error;
   bool _searching = false;
   bool _resolving = false;
 
   AppTheme get t => widget.t;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionToken = PlacesService.newSessionToken();
+  }
 
   @override
   void dispose() {
@@ -52,7 +59,7 @@ class _AddressSearchScreenState extends State<AddressSearchScreen> {
 
   Future<void> _search(String input) async {
     try {
-      final results = await _places.autocomplete(input);
+      final results = await _places.autocomplete(input, sessionToken: _sessionToken);
       if (!mounted) return;
       setState(() { _suggestions = results; _error = null; _searching = false; });
     } on PlacesApiException catch (e) {
@@ -64,7 +71,7 @@ class _AddressSearchScreenState extends State<AddressSearchScreen> {
   Future<void> _pick(PlaceSuggestion s) async {
     setState(() => _resolving = true);
     try {
-      final d = await _places.details(s.placeId);
+      final d = await _places.details(s.placeId, sessionToken: _sessionToken);
       if (!mounted) return;
       Navigator.pop(context, PickedPlace(name: d.name, address: d.address, lat: d.lat, lng: d.lng));
     } on PlacesApiException catch (e) {

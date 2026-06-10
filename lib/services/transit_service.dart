@@ -4,6 +4,11 @@ import '../config.dart';
 import '../data/models.dart';
 
 class TransitService {
+  /// Response cache. Identical requests within the TTL are served from
+  /// memory instead of hitting the Directions API again.
+  static final Map<String, (DateTime, List<Departure>)> _cache = {};
+  static const _cacheTtl = Duration(minutes: 2);
+
   Future<List<Departure>> getDepartures({
     required double originLat,
     required double originLng,
@@ -12,6 +17,15 @@ class TransitService {
   }) async {
     final departureTimeSec =
         (departureTime ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
+
+    // Cache key: origin rounded to ~100 m, destination, 2-min time bucket —
+    // small GPS jitter or rapid toggling reuses the same response.
+    final cacheKey = '${originLat.toStringAsFixed(3)},${originLng.toStringAsFixed(3)}'
+        '|$destination|${departureTimeSec ~/ 120}';
+    final hit = _cache[cacheKey];
+    if (hit != null && DateTime.now().difference(hit.$1) < _cacheTtl) {
+      return hit.$2;
+    }
 
     final uri = Uri.https('maps.googleapis.com', '/maps/api/directions/json', {
       'origin': '$originLat,$originLng',
@@ -27,7 +41,10 @@ class TransitService {
 
     final body = jsonDecode(resp.body) as Map<String, dynamic>;
     final status = body['status'] as String;
-    if (status == 'ZERO_RESULTS' || status == 'NOT_FOUND') return [];
+    if (status == 'ZERO_RESULTS' || status == 'NOT_FOUND') {
+      _cache[cacheKey] = (DateTime.now(), []);
+      return [];
+    }
     if (status != 'OK') throw Exception('Directions API: $status');
 
     final routes = body['routes'] as List<dynamic>;
@@ -40,6 +57,7 @@ class TransitService {
     }
 
     deps.sort((a, b) => a.leaveIn.compareTo(b.leaveIn));
+    _cache[cacheKey] = (DateTime.now(), deps);
     return deps;
   }
 
@@ -49,7 +67,7 @@ class TransitService {
     required double originLat,
     required double originLng,
     required String destination,
-    int probes = 4,
+    int probes = 3,
     int stepMin = 12,
   }) async {
     final now = DateTime.now();
