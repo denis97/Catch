@@ -1,8 +1,12 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'data/places_repository.dart';
+import 'services/commute_service.dart';
 import 'services/reminder_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
@@ -13,6 +17,10 @@ void main() async {
   final prefs = await SharedPreferences.getInstance();
   final onboarded = prefs.getBool('onboarded') ?? false;
   await ReminderService.instance.init();
+  if (!kIsWeb && Platform.isAndroid) {
+    await AndroidAlarmManager.initialize();
+    await CommuteService.reschedule();
+  }
   runApp(CatchApp(onboarded: onboarded, prefs: prefs));
 }
 

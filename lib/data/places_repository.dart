@@ -29,6 +29,13 @@ class PlacesRepository extends ChangeNotifier {
   List<Place> get favorites =>
       _places.where((p) => p.kind == PlaceKind.star).toList();
 
+  Place? byId(String id) {
+    for (final p in _places) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
   Place? _firstOfKind(PlaceKind k) {
     for (final p in _places) {
       if (p.kind == k) return p;

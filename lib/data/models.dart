@@ -112,3 +112,65 @@ class Place {
         placeId: j['placeId'] as String?,
       );
 }
+
+/// A recurring window during which the app proactively shows the next
+/// departure on the lock screen — when the user is near [atPlaceId] and
+/// presumably about to head to [toPlaceId].
+class CommuteAlert {
+  final String id;
+  final String atPlaceId; // where the user is (geofence anchor)
+  final String toPlaceId; // destination to route to
+  final int startMin;     // window start, minutes since midnight
+  final int endMin;       // window end, minutes since midnight
+  final List<int> days;   // DateTime.weekday values (1=Mon … 7=Sun)
+  final bool enabled;
+
+  const CommuteAlert({
+    required this.id,
+    required this.atPlaceId,
+    required this.toPlaceId,
+    required this.startMin,
+    required this.endMin,
+    required this.days,
+    this.enabled = true,
+  });
+
+  bool activeAt(DateTime now) {
+    final nowMin = now.hour * 60 + now.minute;
+    return days.contains(now.weekday) && nowMin >= startMin && nowMin < endMin;
+  }
+
+  /// Next moment this alert needs attention: now if the window is open,
+  /// otherwise the start of the next scheduled window.
+  DateTime nextRun(DateTime now) {
+    if (activeAt(now)) return now;
+    for (int i = 0; i < 8; i++) {
+      final day = DateTime(now.year, now.month, now.day).add(Duration(days: i));
+      if (!days.contains(day.weekday)) continue;
+      final start = day.add(Duration(minutes: startMin));
+      if (start.isAfter(now)) return start;
+    }
+    return now.add(const Duration(days: 7)); // unreachable with valid days
+  }
+
+  CommuteAlert copyWith({bool? enabled}) => CommuteAlert(
+        id: id, atPlaceId: atPlaceId, toPlaceId: toPlaceId,
+        startMin: startMin, endMin: endMin, days: days,
+        enabled: enabled ?? this.enabled,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id, 'at': atPlaceId, 'to': toPlaceId,
+        'start': startMin, 'end': endMin, 'days': days, 'enabled': enabled,
+      };
+
+  factory CommuteAlert.fromJson(Map<String, dynamic> j) => CommuteAlert(
+        id: j['id'] as String,
+        atPlaceId: j['at'] as String,
+        toPlaceId: j['to'] as String,
+        startMin: j['start'] as int,
+        endMin: j['end'] as int,
+        days: (j['days'] as List<dynamic>).cast<int>(),
+        enabled: (j['enabled'] as bool?) ?? true,
+      );
+}
