@@ -361,12 +361,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openMaps() async {
     final place = _selectedPlace;
     if (place == null) return;
-    final dest = place.hasCoords ? '${place.lat},${place.lng}' : Uri.encodeComponent(place.address);
+    final dest = Uri.encodeComponent(place.address);
+    final destId = place.placeId != null ? '&destination_place_id=${place.placeId}' : '';
     final origin = _pos != null ? '&origin=${_pos!.latitude},${_pos!.longitude}' : '';
     final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1$origin&destination=$dest&travelmode=transit',
+      'https://www.google.com/maps/dir/?api=1$origin&destination=$dest$destId&travelmode=transit',
     );
-    if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not open Maps'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   void _openDetail(Departure d) {
